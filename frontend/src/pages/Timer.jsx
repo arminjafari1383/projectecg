@@ -1002,7 +1002,7 @@ export default function TimerPage() {
             </button>
 
 
-            </div>
+            </div><br /><br /><br /><br />
           </div>
 
         </div>
