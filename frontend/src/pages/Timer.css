@@ -1622,6 +1622,9 @@ body,
   backdrop-filter: blur(28px) saturate(155%);
   -webkit-backdrop-filter: blur(28px) saturate(155%);
   animation: welcomeCardIn .46s cubic-bezier(.2,.86,.25,1.18) both;
+  max-height: 85vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .welcome-celebration-card::before {
