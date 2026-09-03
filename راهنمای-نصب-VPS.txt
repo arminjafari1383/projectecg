@@ -1,0 +1,223 @@
+================================================================================
+          AI PolyNet — راهنمای نصب و اجرا روی VPS (قدم به قدم)
+================================================================================
+
+این فایل برای برنامه‌نویس / مشتری است تا پروژه fix شده را خودش روی سرور
+بالا بیاورد. پورت پیش‌فرض: 80
+
+--------------------------------------------------------------------------------
+بخش ۱ — قبل از شروع
+--------------------------------------------------------------------------------
+
+روی سرور Ubuntu باید Docker نصب باشد.
+
+  docker --version
+  docker-compose --version
+
+اگر نصب نیست:
+
+  curl -fsSL https://get.docker.com | sh
+  apt install -y docker-compose
+
+فایل zip را روی سرور آپلود و extract کنید. مثال:
+
+  cd /root
+  unzip finalproject-fix.zip
+  cd finalproject-fix/finalproject-main
+
+(اگر مسیر extract شما فرق دارد، همان پوشه‌ای را باز کنید که
+ docker-compose.yaml داخلش است.)
+
+--------------------------------------------------------------------------------
+بخش ۲ — ساخت فایل‌های env (خیلی مهم)
+--------------------------------------------------------------------------------
+
+قدم ۱) Backend
+----------------
+  cp backend/.env.example backend/.env
+  nano backend/.env
+
+این موارد را حتماً پر کنید:
+
+  DJANGO_SECRET_KEY=یک-رشته-تصادفی-بلند
+  DJANGO_DEBUG=false
+  DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,aipolynet.com,www.aipolynet.com
+  DJANGO_CSRF_TRUSTED_ORIGINS=https://aipolynet.com,https://www.aipolynet.com
+  CORS_ALLOWED_ORIGINS=https://aipolynet.com,https://www.aipolynet.com
+
+  POSTGRES_HOST=db
+  POSTGRES_DB=mydb
+  POSTGRES_USER=user
+  POSTGRES_PASSWORD=pass
+
+  TON_PRIVATE_KEY=کلید-واقعی-پروژه-شما
+  GRAM_MERCHANT_ADDRESS=آدرس-واقعی
+  ADMIN_2FA_SECRET=secret-واقعی
+
+نکته: POSTGRES_HOST حتماً باید db باشد (نه localhost).
+
+ذخیره در nano: Ctrl+O سپس Enter ، خروج: Ctrl+X
+
+
+قدم ۲) فایل env ریشه پروژه (برای TON treasury)
+------------------------------------------------
+  cp .env.example .env
+  nano .env
+
+  TREASURY_MNEMONIC=24 کلمه wallet treasury شما
+  VITE_BOT_USERNAME=Aipolynetbot
+  VITE_MINI_APP_SHORT_NAME=app
+
+
+قدم ۳) Frontend
+----------------
+  cp frontend/.env.example frontend/.env
+  nano frontend/.env
+
+  VITE_BOT_USERNAME=Aipolynetbot
+  VITE_MINI_APP_SHORT_NAME=app
+
+نام bot و short name مینی‌اپ را مطابق BotFather خودتان بگذارید.
+
+--------------------------------------------------------------------------------
+بخش ۳ — خاموش کردن نسخه قبلی (اگر روی پورت 80 است)
+--------------------------------------------------------------------------------
+
+اگر پروژه قدیمی دارید و هنوز روشن است:
+
+  cd /root/finalproject
+  docker-compose down
+
+بعد برگردید به پوشه پروژه جدید:
+
+  cd /root/finalproject-fix/finalproject-main
+
+(مسیر را با مسیر واقعی خودتان عوض کنید.)
+
+--------------------------------------------------------------------------------
+بخش ۴ — Build و Run
+--------------------------------------------------------------------------------
+
+قدم ۱) Build (اولین بار یا بعد از تغییر کد)
+
+  docker-compose build --no-cache
+
+صبر کنید تا کامل شود (چند دقیقه طول می‌کشد).
+
+قدم ۲) اجرا در پس‌زمینه
+
+  docker-compose up -d
+
+قدم ۳) چک وضعیت سرویس‌ها
+
+  docker-compose ps
+
+باید همه Up باشند:
+  - django-backend
+  - nginx-server        (پورت 80)
+  - postgres-db
+  - react-frontend
+  - ton-service
+
+قدم ۴) تست سریع
+
+  curl -I http://127.0.0.1/
+
+باید ببینید: HTTP/1.1 200 OK
+
+  curl -I http://127.0.0.1/api/wallet/reward_status/
+
+--------------------------------------------------------------------------------
+بخش ۵ — دامنه و Cloudflare
+--------------------------------------------------------------------------------
+
+  1) DNS دامنه را به IP سرور بگیرید
+  2) اگر UI قدیمی دیدید → در Cloudflare گزینه Purge Cache
+  3) Mini App تلگرام را کامل ببندید و دوباره باز کنید
+
+--------------------------------------------------------------------------------
+بخش ۶ — تست Invite / Referral
+--------------------------------------------------------------------------------
+
+  1) با اکانت A وارد Mini App شوید
+  2) لینک دعوت بسازید (صفحه Timer یا Referrals)
+  3) با اکانت B روی لینک کلیک کنید
+  4) اکانت A باید 1000 EPL Referral Bonus ببیند
+
+نکته: پیام جداگانه در تلگرام برای referral ارسال نمی‌شود؛
+      پاداش فقط در UI (EPL) نمایش داده می‌شود.
+
+--------------------------------------------------------------------------------
+بخش ۷ — دستورات مفید روزمره
+--------------------------------------------------------------------------------
+
+وضعیت سرویس‌ها:
+  docker-compose ps
+
+لاگ بک‌اند:
+  docker-compose logs backend --tail 100
+
+لاگ nginx:
+  docker-compose logs nginx --tail 50
+
+ریستارت:
+  docker-compose restart
+
+خاموش کردن:
+  docker-compose down
+
+خاموش + پاک کردن دیتابیس (خطرناک — دیتا پاک می‌شود):
+  docker-compose down -v
+
+--------------------------------------------------------------------------------
+بخش ۸ — مشکلات رایج
+--------------------------------------------------------------------------------
+
+مشکل: پورت 80 اشغال است
+  docker ps
+  پروژه قبلی را docker-compose down کنید
+
+مشکل: backend بالا نمی‌آید
+  docker-compose logs backend --tail 50
+  backend/.env را چک کنید (مخصوصاً POSTGRES_HOST=db)
+
+مشکل: ton-service خطا می‌دهد
+  .env ریشه را چک کنید (TREASURY_MNEMONIC)
+
+مشکل: UI قدیمی در تلگرام
+  Cloudflare cache purge + Mini App را ببندید و دوباره باز کنید
+
+مشکل: API خطای 502
+  docker-compose restart backend nginx
+  docker-compose logs backend --tail 50
+
+--------------------------------------------------------------------------------
+بخش ۹ — فایل‌های مهم داخل پروژه
+--------------------------------------------------------------------------------
+
+  README.md          — راهنمای کامل (markdown)
+  FIX-REPORT.md      — گزارش فنی باگ referral و راه‌حل
+  backend/.env.example
+  .env.example
+  frontend/.env.example
+  docker-compose.yaml
+
+--------------------------------------------------------------------------------
+بخش ۱۰ — چک‌لیست نهایی قبل از تحویل
+--------------------------------------------------------------------------------
+
+  [ ] backend/.env ساخته و پر شده
+  [ ] .env ریشه ساخته و TREASURY_MNEMONIC پر شده
+  [ ] frontend/.env ساخته شده
+  [ ] docker-compose ps → همه Up
+  [ ] curl http://127.0.0.1/ → 200
+  [ ] Mini App در تلگرام باز می‌شود
+  [ ] Invite link تست شده
+
+--------------------------------------------------------------------------------
+
+اگر همه مراحل بالا OK بود، پروژه آماده استفاده دائمی روی VPS است.
+
+برای جزئیات فنی باگ referral فایل FIX-REPORT.md را بخوانید.
+
+================================================================================

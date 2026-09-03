@@ -1,0 +1,1102 @@
+/* ============================================================
+   REFERRALS - ULTIMATE GLASS DESIGN (MOBILE OPTIMIZED)
+   ============================================================ */
+
+* {
+  box-sizing: border-box;
+}
+
+.referrals-container {
+  width: 100%;
+  max-width: 1200px;
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 16px;
+  color: #ffffff;
+  background:
+    radial-gradient(circle at 10% 10%, rgba(59, 130, 246, 0.08), transparent 30%),
+    radial-gradient(circle at 90% 20%, rgba(34, 197, 94, 0.06), transparent 30%),
+    #070b16;
+}
+
+/* ============================================================
+   TITLE
+   ============================================================ */
+
+.ref-title {
+  margin: 0 0 20px;
+  text-align: center;
+  color: #dbeafe;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+
+/* ============================================================
+   CONNECT WARNING
+   ============================================================ */
+
+.connect-warning {
+  text-align: center;
+  padding: 30px 20px;
+  font-size: 16px;
+  color: #ffd700;
+  background: rgba(255, 215, 0, 0.05);
+  border-radius: 14px;
+  border: 1px solid rgba(255, 215, 0, 0.1);
+  backdrop-filter: blur(10px);
+}
+
+/* ============================================================
+   REFERRAL LINK - GLASS CARD
+   ============================================================ */
+
+.referral-link-section {
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 20px;
+  padding: 18px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
+}
+
+.referral-link-section::before {
+  content: "";
+  position: absolute;
+  top: -80px;
+  right: -80px;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: rgba(59, 130, 246, 0.08);
+  filter: blur(40px);
+  pointer-events: none;
+}
+
+.referral-link-section::after {
+  content: "";
+  position: absolute;
+  bottom: -60px;
+  left: -60px;
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  background: rgba(34, 197, 94, 0.05);
+  filter: blur(30px);
+  pointer-events: none;
+}
+
+.referral-link-label {
+  position: relative;
+  margin: 0 0 10px;
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.link-actions {
+  position: relative;
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  flex-wrap: wrap;
+}
+
+.link-input {
+  flex: 1;
+  min-width: 0;
+  height: 42px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #e2e8f0;
+  font-family: monospace;
+  font-size: 12px;
+  transition: 0.25s ease;
+}
+
+.link-input:focus {
+  outline: none;
+  border-color: rgba(96, 165, 250, 0.4);
+  box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.08);
+}
+
+/* ====== GLASS BUTTONS - SMALLER ====== */
+.btn-open,
+.btn-copy,
+.btn-share-telegram {
+  height: 42px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.btn-open:hover,
+.btn-copy:hover,
+.btn-share-telegram:hover {
+  transform: translateY(-2px);
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+}
+
+.btn-open {
+  border-color: rgba(96, 165, 250, 0.2);
+  background: rgba(96, 165, 250, 0.08);
+}
+
+.btn-open:hover {
+  border-color: rgba(96, 165, 250, 0.4);
+  background: rgba(96, 165, 250, 0.15);
+}
+
+.btn-copy {
+  border-color: rgba(148, 163, 184, 0.15);
+  background: rgba(148, 163, 184, 0.06);
+}
+
+.btn-copy:hover {
+  border-color: rgba(148, 163, 184, 0.3);
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.btn-share-telegram {
+  border-color: rgba(34, 158, 217, 0.25);
+  background: linear-gradient(135deg, rgba(34, 158, 217, 0.15), rgba(22, 133, 217, 0.08));
+  box-shadow: 0 6px 20px rgba(34, 158, 217, 0.08);
+}
+
+.btn-share-telegram:hover {
+  border-color: rgba(34, 158, 217, 0.5);
+  background: linear-gradient(135deg, rgba(34, 158, 217, 0.25), rgba(22, 133, 217, 0.15));
+  box-shadow: 0 10px 25px rgba(34, 158, 217, 0.15);
+}
+
+/* ============================================================
+   STATS - GLASS CARDS
+   ============================================================ */
+
+.stats-box {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: all 0.3s ease;
+}
+
+.stat-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  transform: translateY(-2px);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.stat-label {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.stat-value {
+  color: #facc15;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+/* ============================================================
+   TELEGRAM STATUS
+   ============================================================ */
+
+.telegram-status {
+  margin: 12px 0;
+}
+
+.status-active,
+.status-inactive {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.status-active {
+  color: #4ade80;
+  border: 1px solid rgba(34, 197, 94, 0.18);
+  background: rgba(34, 197, 94, 0.08);
+}
+
+.status-inactive {
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.18);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+/* ============================================================
+   INFO NOTE
+   ============================================================ */
+
+.info-note {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-left: 3px solid #3b82f6;
+  border-radius: 8px;
+  background: rgba(59, 130, 246, 0.05);
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* ============================================================
+   LEVELS SECTION - GLASS (موبایل بهینه)
+   ============================================================ */
+
+.levels-section {
+  margin-top: 20px;
+  padding: 16px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.02);
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.levels-section h3 {
+  margin: 0 0 16px;
+  color: #60a5fa; /* ✅ آبی یخی */
+  font-size: 17px;
+  text-align: center;
+  letter-spacing: 0.5px;
+}
+
+.levels-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+/* ====== LEVEL CARD - کوچکتر برای موبایل ====== */
+.level-card {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: all 0.3s ease;
+}
+
+.level-card:hover {
+  border-color: rgba(96, 165, 250, 0.3);
+  transform: translateY(-2px);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: 0 8px 20px rgba(96, 165, 250, 0.06);
+}
+
+.level-table {
+  width: 100%;
+}
+
+.level-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.level-header h4 {
+  margin: 0;
+  color: #facc15;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.level-count {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #64748b;
+  font-size: 9px;
+  font-weight: 600;
+}
+
+
+/* ====== REFERRAL PROFIT NOTE ====== */
+.level-profit-note {
+  margin: 0 0 8px;
+
+  padding: 6px 9px;
+
+  border: 1px solid rgba(255,255,255,0.15);
+
+  border-radius: 7px;
+
+  background: rgba(255,255,255,0.06);
+
+  color: #ffffff;
+
+  font-size: 9px;
+
+  font-weight: 900;
+
+  line-height: 1.3;
+
+  text-align: center;
+
+  white-space: nowrap;
+
+  text-shadow:
+    0 0 6px rgba(255,255,255,.8),
+    0 0 12px rgba(255,255,255,.4);
+
+  animation: none;
+}
+
+
+/* حالت اصلی چشمک ریز */
+
+
+
+.level-profit-main {
+  border-color: rgba(250, 204, 21, 0.18);
+  background: rgba(250, 204, 21, 0.06);
+  color: #facc15;
+}
+
+/* ====== TABLE - کوچکتر برای موبایل ====== */
+.table-wrapper {
+  overflow-x: auto;
+  border-radius: 6px;
+}
+
+.level-table table {
+  width: 100%;
+  min-width: 350px;
+  border-collapse: collapse;
+  font-size: 10px;
+}
+
+.level-table th {
+  padding: 5px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.03);
+  color: #64748b;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.level-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  color: #cbd5e1;
+  font-size: 9px;
+}
+
+.level-table tr:hover td {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* ====== TELEGRAM USER: AVATAR + USERNAME ====== */
+.user-cell {
+  min-width: 155px;
+}
+
+.referral-user-profile {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.user-avatar-wrapper {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  padding: 2px;
+  overflow: hidden;
+  border: 1px solid rgba(96, 165, 250, 0.55);
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(96, 165, 250, 0.28), rgba(34, 197, 94, 0.16));
+  box-shadow: 0 4px 14px rgba(59, 130, 246, 0.18);
+}
+
+.user-avatar {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center;
+  background: #111827;
+}
+
+.referral-username {
+  display: block;
+  max-width: 120px;
+  overflow: hidden;
+  color: #e2e8f0;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.telegram-id {
+  color: #facc15;
+  font-family: monospace;
+  font-size: 8px;
+}
+
+.wallet-address {
+  color: #60a5fa;
+  font-family: monospace;
+  font-size: 8px;
+}
+
+.investment-cell {
+  color: #38bdf8;
+  font-weight: 700;
+  font-size: 9px;
+}
+
+.profit-cell {
+  color: #4ade80;
+  font-weight: 700;
+  font-size: 9px;
+}
+
+.empty-message,
+.no-data {
+  padding: 15px !important;
+  color: #475569;
+  text-align: center;
+  font-style: italic;
+  font-size: 9px;
+}
+
+.show-more {
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  color: #64748b;
+  font-size: 9px;
+  text-align: center;
+}
+
+/* ============================================================
+   TEST BUTTON
+   ============================================================ */
+
+.test-actions {
+  margin-top: 16px;
+  text-align: center;
+}
+
+.btn-test {
+  padding: 10px 22px;
+  border: 1px solid rgba(118, 75, 162, 0.25);
+  border-radius: 10px;
+  background: rgba(118, 75, 162, 0.08);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: #a78bfa;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-test:hover {
+  background: rgba(118, 75, 162, 0.15);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(118, 75, 162, 0.1);
+}
+
+.btn-test:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ============================================================
+   TEST TABLE SECTION
+   ============================================================ */
+
+.test-table-section {
+  margin-top: 16px;
+  padding: 16px 14px;
+  border: 1px solid rgba(118, 75, 162, 0.3);
+  border-radius: 14px;
+  background: rgba(10, 10, 26, 0.9);
+  backdrop-filter: blur(15px);
+  animation: slideDown 0.4s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.test-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.test-header h3 {
+  margin: 0;
+  color: #a78bfa;
+  font-size: 15px;
+}
+
+.btn-close {
+  padding: 5px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #94a3b8;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-close:hover {
+  background: rgba(255, 0, 0, 0.1);
+  color: #ff6b6b;
+  border-color: rgba(255, 0, 0, 0.2);
+}
+
+.test-card {
+  border-color: rgba(118, 75, 162, 0.4) !important;
+}
+
+.test-note {
+  margin-top: 12px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(118, 75, 162, 0.08);
+  color: #64748b;
+  font-size: 10px;
+  text-align: center;
+}
+
+/* ============================================================
+   LOADING / ERROR
+   ============================================================ */
+
+.loading-spinner {
+  padding: 20px;
+  color: #64748b;
+  font-size: 13px;
+  text-align: center;
+}
+
+.error-message {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 8px;
+  background: rgba(239, 68, 68, 0.08);
+  color: #f87171;
+  font-size: 13px;
+}
+
+/* ============================================================
+   RESPONSIVE - MOBILE
+   ============================================================ */
+
+@media (max-width: 768px) {
+  .referrals-container {
+    padding: 12px;
+  }
+
+  .ref-title {
+    font-size: 20px;
+    margin-bottom: 16px;
+  }
+
+  .referral-link-section {
+    padding: 14px 12px;
+    border-radius: 14px;
+  }
+
+  .link-actions {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .link-input,
+  .btn-open,
+  .btn-copy,
+  .btn-share-telegram {
+    width: 100%;
+    height: 38px;
+    font-size: 11px;
+    padding: 0 12px;
+  }
+
+  .stats-box {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .stat-item {
+    padding: 10px 12px;
+  }
+
+  .stat-value {
+    font-size: 18px;
+  }
+
+  .levels-section {
+    padding: 12px 10px;
+    border-radius: 12px;
+  }
+
+  .levels-section h3 {
+    font-size: 15px;
+    margin-bottom: 12px;
+  }
+
+  .levels-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .level-card {
+    padding: 8px 10px;
+    border-radius: 10px;
+  }
+
+  .level-table table {
+    min-width: 280px;
+    font-size: 9px;
+  }
+
+  .level-table th {
+    font-size: 7px;
+    padding: 4px 6px;
+  }
+
+  .level-table td {
+    font-size: 8px;
+    padding: 4px 6px;
+  }
+
+  .user-cell {
+    min-width: 135px;
+  }
+
+  .user-avatar-wrapper {
+    width: 32px;
+    height: 32px;
+    flex-basis: 32px;
+  }
+
+  .referral-username {
+    max-width: 95px;
+    font-size: 9px;
+  }
+
+  .telegram-id,
+  .wallet-address {
+    font-size: 7px;
+  }
+
+  .investment-cell,
+  .profit-cell {
+    font-size: 8px;
+  }
+
+  .level-header h4 {
+    font-size: 11px;
+  }
+
+  .level-count {
+    font-size: 8px;
+    padding: 2px 6px;
+  }
+
+  .empty-message,
+  .no-data {
+    padding: 10px !important;
+    font-size: 8px;
+  }
+
+  .show-more {
+    font-size: 8px;
+  }
+
+  .test-actions {
+    margin-top: 12px;
+  }
+
+  .btn-test {
+    padding: 8px 18px;
+    font-size: 11px;
+  }
+
+  .test-table-section {
+    padding: 12px 10px;
+    border-radius: 10px;
+  }
+
+  .test-header h3 {
+    font-size: 13px;
+  }
+
+  .btn-close {
+    font-size: 10px;
+    padding: 4px 10px;
+  }
+
+  .test-note {
+    font-size: 9px;
+    padding: 6px 8px;
+  }
+
+  .telegram-status {
+    margin: 10px 0;
+  }
+
+  .status-active,
+  .status-inactive {
+    font-size: 10px;
+    padding: 4px 10px;
+  }
+
+  .info-note {
+    font-size: 10px;
+    padding: 8px 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .referrals-container {
+    padding: 8px;
+  }
+
+  .ref-title {
+    font-size: 18px;
+    margin-bottom: 12px;
+  }
+
+  .referral-link-section {
+    padding: 12px 10px;
+    border-radius: 12px;
+  }
+
+  .stats-box {
+    gap: 6px;
+  }
+
+  .stat-item {
+    padding: 8px 10px;
+  }
+
+  .stat-label {
+    font-size: 8px;
+  }
+
+  .stat-value {
+    font-size: 16px;
+  }
+
+  .levels-section h3 {
+    font-size: 13px;
+  }
+
+  .level-table table {
+    min-width: 240px;
+    font-size: 8px;
+  }
+
+  .level-table th {
+    font-size: 6px;
+    padding: 3px 4px;
+  }
+
+  .level-table td {
+    font-size: 7px;
+    padding: 3px 4px;
+  }
+
+  .user-cell {
+    min-width: 120px;
+  }
+
+  .referral-user-profile {
+    gap: 6px;
+  }
+
+  .user-avatar-wrapper {
+    width: 28px;
+    height: 28px;
+    flex-basis: 28px;
+  }
+
+  .referral-username {
+    max-width: 82px;
+    font-size: 8px;
+  }
+
+  .telegram-id,
+  .wallet-address {
+    font-size: 6px;
+  }
+
+  .investment-cell,
+  .profit-cell {
+    font-size: 7px;
+  }
+
+  .level-header h4 {
+    font-size: 10px;
+  }
+
+  .level-count {
+    font-size: 7px;
+  }
+
+  .btn-test {
+    padding: 6px 14px;
+    font-size: 10px;
+  }
+
+  .level-profit-note {
+    padding: 5px 6px;
+    font-size: 7.5px;
+  }
+
+  .test-header h3 {
+    font-size: 11px;
+  }
+}
+
+/* ============================================================
+   REFERRAL TREE — PHONE RESPONSIVE CARD TABLE
+   Added for 6-column Referral Tree (ECG + USDT profit)
+   ============================================================ */
+
+@media (max-width: 600px) {
+  /* Keep every level card inside the viewport. */
+  .levels-section,
+  .levels-grid,
+  .level-card,
+  .level-table,
+  .table-wrapper {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .level-card {
+    overflow: hidden;
+  }
+
+  /* On phones the desktop table becomes readable cards instead of
+     squeezing six columns or forcing a wide horizontal scroll. */
+  .table-wrapper {
+    overflow: visible;
+    border-radius: 10px;
+  }
+
+  .level-table table,
+  .level-table tbody {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .level-table thead {
+    display: none;
+  }
+
+  .level-table tbody {
+    display: grid;
+    gap: 9px;
+  }
+
+  .level-table tbody tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.025);
+  }
+
+  .level-table tbody tr:hover td {
+    background: transparent;
+  }
+
+  .level-table td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+    min-height: 36px;
+    padding: 7px 8px;
+    border: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    color: #cbd5e1;
+    font-size: 8px;
+    line-height: 1.35;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .level-table td:nth-child(odd) {
+    border-right: 1px solid rgba(255, 255, 255, 0.04);
+  }
+
+  .level-table td::before {
+    flex: 0 0 auto;
+    margin-right: 6px;
+    color: #64748b;
+    font-size: 7px;
+    font-weight: 800;
+    letter-spacing: 0.2px;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .level-table td:nth-child(1)::before {
+    content: "#";
+  }
+
+  .level-table td:nth-child(2)::before {
+    content: "User";
+  }
+
+  .level-table td:nth-child(3)::before {
+    content: "Investment";
+  }
+
+  .level-table td:nth-child(4)::before {
+    content: "Referral Bonus";
+  }
+
+  .level-table td:nth-child(5)::before {
+    content: "Profit ECG";
+  }
+
+  .level-table td:nth-child(6)::before {
+    content: "Profit USDT";
+  }
+
+  /* User information gets a full-width row so avatar/username stay readable. */
+  .level-table td.user-cell,
+  .level-table td:nth-child(2) {
+    grid-column: 1 / -1;
+    min-width: 0;
+    padding: 8px 9px;
+  }
+
+  .level-table .referral-user-profile {
+    min-width: 0;
+    max-width: calc(100% - 38px);
+  }
+
+  .level-table .referral-username {
+    max-width: min(160px, 42vw);
+    font-size: 9px;
+  }
+
+  .level-table .wallet-address,
+  .level-table .telegram-id {
+    display: block;
+    max-width: min(180px, 48vw);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .level-table .investment-cell,
+  .level-table .profit-cell {
+    font-size: 8px;
+    font-weight: 800;
+    text-align: right;
+  }
+
+  /* The empty row must not inherit six-cell card labels. */
+  .level-table td.empty-message,
+  .level-table td.no-data {
+    grid-column: 1 / -1;
+    display: block;
+    width: 100%;
+    padding: 14px 10px !important;
+    text-align: center;
+  }
+
+  .level-table td.empty-message::before,
+  .level-table td.no-data::before {
+    display: none;
+    content: none;
+  }
+}
+
+@media (max-width: 380px) {
+  .level-table tbody tr {
+    grid-template-columns: 1fr;
+  }
+
+  .level-table td,
+  .level-table td.user-cell,
+  .level-table td:nth-child(2) {
+    grid-column: 1;
+    border-right: 0;
+  }
+
+  .level-table td {
+    padding: 7px 8px;
+  }
+
+  .level-table .referral-username {
+    max-width: 44vw;
+  }
+}

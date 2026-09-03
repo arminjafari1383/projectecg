@@ -1,0 +1,95 @@
+version: "3.9"
+
+services:
+
+  backend:
+    build: ./backend
+    container_name: django-backend
+    restart: always
+
+    volumes:
+      - ./backend:/backend
+
+    expose:
+      - "8000"
+
+    depends_on:
+      - db
+      - tonservice
+
+    env_file:
+      - ./backend/.env
+
+    environment:
+      TON_SERVICE_URL: http://tonservice:3001
+      POSTGRES_HOST: db
+      POSTGRES_DB: mydb
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+      DJANGO_DEBUG: "false"
+
+    command: >
+      sh -c "
+      python manage.py migrate &&
+      gunicorn core.wsgi:application --bind 0.0.0.0:8000
+      "
+
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_BOT_USERNAME: ${VITE_BOT_USERNAME:-Aipolynetbot}
+        VITE_MINI_APP_SHORT_NAME: ${VITE_MINI_APP_SHORT_NAME:-app}
+    container_name: react-frontend
+    restart: always
+
+
+  tonservice:
+    build: ./ton-service
+    container_name: ton-service
+    restart: always
+
+    environment:
+      TON_NETWORK: mainnet
+      TREASURY_MNEMONIC: ${TREASURY_MNEMONIC:-}
+
+    expose:
+      - "3001"
+
+
+  nginx:
+    build:
+      context: ./frontend
+      args:
+        VITE_BOT_USERNAME: ${VITE_BOT_USERNAME:-Aipolynetbot}
+        VITE_MINI_APP_SHORT_NAME: ${VITE_MINI_APP_SHORT_NAME:-app}
+    container_name: nginx-server
+
+    ports:
+      - "80:80"
+
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+
+    depends_on:
+      - frontend
+      - backend
+
+
+  db:
+    image: postgres:16
+    container_name: postgres-db
+    restart: always
+
+    environment:
+      POSTGRES_DB: mydb
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+
+volumes:
+  pg_data:
