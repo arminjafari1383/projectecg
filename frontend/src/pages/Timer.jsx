@@ -21,6 +21,7 @@ import {
   buildReferralApiParams,
 } from "../utils/referral";
 import { api } from "../api";
+import axios from "axios";
 
 function getTelegramWebApp() {
   try {
@@ -922,7 +923,7 @@ export default function TimerPage() {
             
             )}
             <div className="welcome-eyebrow">
-              WELCOME <BACK></BACK>
+              WELCOME BACK
             </div>
             <h2 className="welcome-title">
               {telegramDisplayName}
