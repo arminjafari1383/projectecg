@@ -356,6 +356,10 @@ export default function TimerPage() {
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteMessage, setInviteMessage] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [welcomeOpen,setWelcomeOpen] = useState(false);
+  const [totalReferrals, setTotalReferrals] = useState(0);
+  const [referralsLoaded, setReferralsLoaded] = useState(false);
+  const welcomeShownRef = useRef(false);
 
   // =========================================================
   // REFs
@@ -770,6 +774,87 @@ export default function TimerPage() {
     }
   };
 
+  /* =========================================================
+   WELCOME POPUP — REFERRAL DATA
+  ========================================================= */
+  useEffect(() => {
+    if (!telegramId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadWelcomeReferralData() {
+      try {
+        const response = await axios.get(
+          `${API}/referral/levels`,
+          {
+            params: {
+              telegram_id: telegramId,
+              telegram_username:
+               telegramUsername || undefined,
+              telegram_photo_url:
+               telegramPhotoUrl || undefined,
+              is_telegram: true,
+            },
+          }
+        );
+       if (cancelled) {
+        return;
+       }
+       setTotalReferrals(
+        Number(
+          response.data?.total_referrals || 0
+        )
+       );
+      } catch (error) {
+        console.error(
+          "[Timer] welcome referral load error:",
+          error
+        );
+        if(!cancelled) {
+          setTotalReferrals(0)
+        }
+      } finally {
+        if (!cancelled) {
+          setReferralsLoaded(true);
+        }
+      }
+    }
+    loadWelcomeReferralData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    telegramId,
+    telegramUsername,
+    telegramPhotoUrl,
+  ]);
+  
+  useEffect (() => {
+    if (
+      !telegramId ||
+      !eplWallet ||
+      !referralsLoaded ||
+      welcomeShownRef.current
+    ){
+      return;
+    }
+    welcomeShownRef.current = true;
+
+    const timer = window.setTimeout(() => {
+      setWelcomeOpen(true);
+    }, 500);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [
+    telegramId,
+    eplWallet,
+    referralsLoaded,
+  ]);
+
   // =========================================================
   // EPL CALCULATIONS
   // =========================================================
@@ -783,6 +868,144 @@ export default function TimerPage() {
   // =========================================================
   return (
     <div className="boost-page">
+      {welcomeOpen && (
+        <div
+        className="welcome-celebration-backdrop"
+        onClick={() => setWelcomeOpen(false)}
+        >
+          {/* CONFETTI */}
+          <div className="welcome-confetti" aria-hidden="true">
+            {Array.from({ length: 24 }).map((_,index) => (
+              <span
+              key={index}
+              style={{
+                "--i":index,
+                "--x":`${(index * 37) % 100}%`,
+                "--delay":`${(index % 8) * 0.08}s`,
+              }}
+              />
+            ))}
+            
+          </div>
+          <div
+          className="welcome-celebration-card"
+          onClick={(event) => 
+            event.stopPropagation()
+          }
+          >
+            <button
+            type="button"
+            className="welcome-close-btn"
+            onClick={() =>
+              setWelcomeOpen(false)
+            }
+            aria-label="Close welcome popup"
+            >
+              ×
+            </button>
+
+            <div className="welcome-party-icon">
+              🎉
+            </div>
+            
+            {telegramPhotoUrl ? (
+              <img
+                src={telegramPhotoUrl}
+                alt="Telegram profile"
+                className="welcome-profile-image"
+              />
+            ):(
+              <div className="welcome-profile-image welcome-profile-fallback">
+                👤
+
+              </div>
+            
+            )}
+            <div className="welcome-eyebrow">
+              WELCOME <BACK></BACK>
+            </div>
+            <h2 className="welcome-title">
+              {telegramDisplayName}
+            </h2>
+            <p className="welcome-description">
+              Your AI POLIFY journey is growing!
+              Here's what you've achieved so far.
+            </p>
+            <div className="welcome-stats-grid">
+              <div className="welcome-stat-card">
+                <div className="welcome-stat-icon">
+                  👥
+                </div>
+                <div className="welcome-stat-value">
+                  {totalReferrals.toLocaleString}
+                </div>
+                <div className="welcome-stat-label">
+                  Total Referrals
+                </div>
+            </div>
+            <div className="welcome-stat-card">
+              <div className="welcome-stat-icon">
+                🎁
+              </div>
+              <div className="welcome-stat-value">
+                {Number(rewardCount || 0).toLocaleString()}
+              </div>
+              <div className="welcome-stat-label">
+                Rewards Claimed
+              </div>
+            </div>
+            <div className="welcome-stat-card">
+              <div className="welcome-stat-icon">
+                💎
+              </div>
+              <div className="welcome-stat-value">
+                {Number(totalRewards || 0).toLocaleString()}
+
+              </div>
+              <div className="welocme-stat-label">
+                Total Rewards
+              </div>
+            </div>
+            <div className="welcome-stat-card">
+              <div className="welcome-stat-icon">
+                 🚀
+              </div>
+              <div className="welcome-stat-value">
+                {Number(
+                  eplReferralEarned || 0
+                ).toLocaleString()}
+              </div>
+              <div className="welcome-stat-label">
+                Referral Rewards
+              </div>
+            </div>
+            <div className="welcome-achievement">
+              <span>🏆</span>
+              <div>
+                <strong>
+                Keep growing your network!
+                </strong>
+                <span>
+                  Invite more friends and unlock more rewards.
+                </span>
+              </div>
+            </div>
+            <button
+            type="button"
+            className="welcome-continue-btn"
+            onClick={() => 
+              setWelcomeOpen(false)
+            }
+            >
+              Continue Mining
+            </button>
+
+
+            </div>
+          </div>
+
+        </div>
+      )}
       <main className="mining-shell">
         <header className="topbar">
           <div className="hamburger-menu" ref={menuRef}>
@@ -897,7 +1120,7 @@ export default function TimerPage() {
                       target="_blank"
                       rel="noreferrer"
                       onClick={() => setMenuOpen(false)}
-                      
+
                     >
                       <span className="drawer-btn-text">🎧 Support</span>
                       <span className="drawer-telegram">@Ai_POLYFI</span>

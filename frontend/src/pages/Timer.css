@@ -1927,3 +1927,469 @@ body,
     grid-template-columns: 1fr;
   }
 }
+/* =========================================================
+   WELCOME CELEBRATION POPUP
+========================================================= */
+
+/* =========================================================
+   WELCOME CELEBRATION POPUP
+========================================================= */
+
+.welcome-celebration-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 20px;
+
+  background:
+    radial-gradient(
+      circle at 50% 30%,
+      rgba(0, 217, 255, 0.16),
+      transparent 40%
+    ),
+    rgba(2, 7, 20, 0.88);
+
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+
+  animation: welcomeFadeIn 0.3s ease;
+}
+
+
+.welcome-celebration-card {
+  position: relative;
+  z-index: 2;
+
+  width: 100%;
+  max-width: 420px;
+
+  padding: 28px 20px 22px;
+
+  overflow: hidden;
+
+  text-align: center;
+
+  border-radius: 28px;
+
+  border:
+    1px solid
+    rgba(0, 217, 255, 0.28);
+
+  background:
+    radial-gradient(
+      circle at 50% 0%,
+      rgba(0, 217, 255, 0.16),
+      transparent 38%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(13, 27, 62, 0.98),
+      rgba(5, 13, 35, 0.99)
+    );
+
+  box-shadow:
+    0 30px 90px rgba(0, 0, 0, 0.6),
+    0 0 50px rgba(0, 217, 255, 0.08);
+
+  animation:
+    welcomeCardIn 0.5s
+    cubic-bezier(
+      0.22,
+      1,
+      0.36,
+      1
+    );
+}
+
+
+.welcome-close-btn {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+
+  width: 36px;
+  height: 36px;
+
+  display: grid;
+  place-items: center;
+
+  padding: 0;
+
+  border: 1px solid
+    rgba(255, 255, 255, 0.12);
+
+  border-radius: 50%;
+
+  background:
+    rgba(255, 255, 255, 0.06);
+
+  color: #ffffff;
+
+  font-size: 22px;
+  line-height: 1;
+
+  cursor: pointer;
+}
+
+
+.welcome-party-icon {
+  font-size: 44px;
+
+  margin-bottom: 8px;
+
+  animation:
+    welcomePartyBounce
+    1.4s ease-in-out infinite;
+}
+
+
+.welcome-profile-image {
+  width: 72px;
+  height: 72px;
+
+  margin:
+    2px auto
+    14px;
+
+  display: grid;
+  place-items: center;
+
+  object-fit: cover;
+
+  border-radius: 50%;
+
+  border:
+    3px solid
+    rgba(0, 217, 255, 0.72);
+
+  box-shadow:
+    0 0 0 5px
+      rgba(0, 217, 255, 0.08),
+    0 0 28px
+      rgba(0, 217, 255, 0.3);
+}
+
+
+.welcome-profile-fallback {
+  background:
+    rgba(0, 217, 255, 0.1);
+
+  font-size: 30px;
+}
+
+
+.welcome-eyebrow {
+  margin-bottom: 5px;
+
+  color: #00d9ff;
+
+  font-size: 10px;
+  font-weight: 900;
+
+  letter-spacing: 0.18em;
+}
+
+
+.welcome-title {
+  margin: 0;
+
+  color: #ffffff;
+
+  font-size: 25px;
+  font-weight: 900;
+}
+
+
+.welcome-description {
+  max-width: 310px;
+
+  margin:
+    8px auto
+    20px;
+
+  color:
+    rgba(223, 236, 255, 0.74);
+
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+
+.welcome-stats-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+
+  gap: 10px;
+}
+
+
+.welcome-stat-card {
+  min-width: 0;
+
+  padding:
+    15px 8px;
+
+  border-radius: 18px;
+
+  border:
+    1px solid
+    rgba(255, 255, 255, 0.08);
+
+  background:
+    rgba(255, 255, 255, 0.045);
+}
+
+
+.welcome-stat-icon {
+  margin-bottom: 6px;
+
+  font-size: 22px;
+}
+
+
+.welcome-stat-value {
+  overflow: hidden;
+
+  color: #ffffff;
+
+  font-size: 21px;
+  font-weight: 900;
+
+  text-overflow: ellipsis;
+}
+
+
+.welcome-stat-label {
+  margin-top: 4px;
+
+  color:
+    rgba(207, 223, 255, 0.66);
+
+  font-size: 10px;
+  font-weight: 700;
+}
+
+
+.welcome-achievement {
+  display: flex;
+  align-items: center;
+
+  gap: 10px;
+
+  margin-top: 14px;
+
+  padding: 12px;
+
+  text-align: left;
+
+  border-radius: 16px;
+
+  border:
+    1px solid
+    rgba(255, 197, 72, 0.18);
+
+  background:
+    rgba(255, 197, 72, 0.07);
+}
+
+
+.welcome-achievement > span {
+  font-size: 25px;
+}
+
+
+.welcome-achievement div {
+  display: flex;
+  flex-direction: column;
+
+  min-width: 0;
+}
+
+
+.welcome-achievement strong {
+  color: #ffdf7e;
+
+  font-size: 12px;
+}
+
+
+.welcome-achievement div span {
+  margin-top: 2px;
+
+  color:
+    rgba(230, 238, 255, 0.68);
+
+  font-size: 10px;
+}
+
+
+.welcome-continue-btn {
+  width: 100%;
+
+  margin-top: 16px;
+
+  padding: 14px 18px;
+
+  border: 0;
+  border-radius: 16px;
+
+  background:
+    linear-gradient(
+      135deg,
+      #00d9ff,
+      #3d7cff
+    );
+
+  color: #ffffff;
+
+  font-size: 14px;
+  font-weight: 900;
+
+  cursor: pointer;
+
+  box-shadow:
+    0 12px 30px
+    rgba(0, 155, 255, 0.22);
+}
+
+
+/* CONFETTI */
+
+.welcome-confetti {
+  position: fixed;
+  inset: 0;
+
+  overflow: hidden;
+
+  pointer-events: none;
+}
+
+
+.welcome-confetti span {
+  position: absolute;
+
+  top: -30px;
+  left: var(--x);
+
+  width: 8px;
+  height: 14px;
+
+  border-radius: 2px;
+
+  background:
+    hsl(
+      calc(var(--i) * 37),
+      90%,
+      62%
+    );
+
+  animation:
+    welcomeConfettiFall
+    3.2s linear infinite;
+
+  animation-delay:
+    var(--delay);
+}
+
+
+@keyframes welcomeFadeIn {
+
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+
+}
+
+
+@keyframes welcomeCardIn {
+
+  from {
+    opacity: 0;
+
+    transform:
+      translateY(35px)
+      scale(0.9);
+  }
+
+  to {
+    opacity: 1;
+
+    transform:
+      translateY(0)
+      scale(1);
+  }
+
+}
+
+
+@keyframes welcomePartyBounce {
+
+  0%,
+  100% {
+    transform:
+      translateY(0)
+      rotate(-5deg);
+  }
+
+  50% {
+    transform:
+      translateY(-7px)
+      rotate(5deg);
+  }
+
+}
+
+
+@keyframes welcomeConfettiFall {
+
+  0% {
+    transform:
+      translateY(-30px)
+      rotate(0deg);
+
+    opacity: 1;
+  }
+
+  100% {
+    transform:
+      translateY(110vh)
+      rotate(720deg);
+
+    opacity: 0;
+  }
+
+}
+
+
+@media (max-width: 420px) {
+
+  .welcome-celebration-backdrop {
+    padding: 14px;
+  }
+
+  .welcome-celebration-card {
+    padding:
+      24px 16px
+      18px;
+  }
+
+  .welcome-title {
+    font-size: 22px;
+  }
+
+  .welcome-stat-value {
+    font-size: 18px;
+  }
+
+}
