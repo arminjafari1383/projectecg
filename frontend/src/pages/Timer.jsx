@@ -787,8 +787,8 @@ export default function TimerPage() {
 
     async function loadWelcomeReferralData() {
       try {
-        const response = await axios.get(
-          `${API}/referral/levels`,
+        const response = await api.get(
+          "/referral/levels/",
           {
             params: {
               telegram_id: telegramId,
@@ -938,7 +938,7 @@ export default function TimerPage() {
                   👥
                 </div>
                 <div className="welcome-stat-value">
-                  {totalReferrals.toLocaleString}
+                  {Number(totalReferrals || 0).toLocaleString()}
                 </div>
                 <div className="welcome-stat-label">
                   Total Referrals
@@ -963,7 +963,7 @@ export default function TimerPage() {
                 {Number(totalRewards || 0).toLocaleString()}
 
               </div>
-              <div className="welocme-stat-label">
+              <div className="welcome-stat-label">
                 Total Rewards
               </div>
             </div>
@@ -971,9 +971,9 @@ export default function TimerPage() {
               <div className="welcome-stat-icon">
                  🚀
               </div>
-              <div className="welcome-stat-value">
+              <div className="welcome-stat-va{totalReferrals.toLocaleString}ue">
                 {Number(
-                  eplReferralEarned || 0
+                  eplReferralBalance || 0
                 ).toLocaleString()}
               </div>
               <div className="welcome-stat-label">
