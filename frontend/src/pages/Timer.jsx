@@ -1232,6 +1232,92 @@ export default function TimerPage() {
           </button>
         )}
 
+        {/* =====================================================
+            QUICK ACTIONS
+        ===================================================== */}
+
+        <section className="quick-actions-box">
+          {/* INVITE FRIENDS */}
+          <button 
+           type="button"
+           className="quick-action-item"
+           onClick={shareReferralOnTelegram}
+           disabled={inviteLoading}
+          >
+            <div className="quick-action-left">
+              <div className="quick-action-icon quick-action-icon-green">
+                👥
+              </div>
+              <div className="quick-action-text">
+                <strong>
+                  Invite Friends
+                </strong>
+                <span>
+                  Earn more with friends
+                </span>
+              </div>
+            </div>
+            <span className="quick-action-arrow">
+              ›
+            </span>
+          </button>
+
+           {/* STAKE EPL */}
+           <button
+           type="button"
+           className="quick-action-item"
+           onClick={() => 
+            setMessage("🚧 Stake EPL coming soon.")
+           }
+           >
+            <div className="quick-action-left">
+              <div className="quick-action-icon quick-action-icon-purple">
+                🪙
+              </div>
+              <div className="quick-action-text">
+                <strong>
+                  Stake Epl
+                </strong>
+                <span>
+                  Stake and earn more
+                </span>
+
+              </div>
+            </div>
+            <span className="quick-action-arrow">
+               ›
+            </span>
+           </button>
+
+           <button
+           type="button"
+           className="quick-action-item"
+           onClick={()=>
+            setMessage("🎁 Daily Bonus coming soon.")
+           }
+           >
+            <div className="quick-action-left">
+              <div className="quick-action-icon quick-action-icon-gold">
+                🎁
+              </div>
+              <div className="quick-action-text">
+                <strong>
+                  Daily Bouns
+                </strong>
+                <span>
+                  Claim your daily reward
+                </span>
+              </div>
+
+            </div>
+            <span className="quick-action-arrow">
+              ›
+            </span>
+
+           </button>
+        </section>
+
+
         <section className="glass-card" style={{ marginTop: 18, padding: 16, borderRadius: 20 }}>
           <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 14, color: "#00d9ff", letterSpacing: "0.08em" }}>👥 REFERRAL MINING</div>
           {[
