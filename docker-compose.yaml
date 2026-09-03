@@ -18,7 +18,7 @@ services:
       - tonservice
 
     env_file:
-      - ./backend/.env
+      - ./backend/.env.example
 
     environment:
       TON_SERVICE_URL: http://tonservice:3001
