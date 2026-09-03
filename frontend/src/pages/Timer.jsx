@@ -817,19 +817,90 @@ export default function TimerPage() {
                     </button>
                   </div>
                   <div className="drawer-buttons">
+                    {/* PROFILE / TELEGRAM ACCOUNT */}
+                    <div
+                    className="drawer-main-btn"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent:"space-between",
+                      gap:12,
+                      cursor:"default",
+                    }}
+                    >
+                      <div style={{ minWidth: 0, textAlign:"left" }}>
+                        <div className="drawer-btn-text">
+                          👤 Profile
+                        </div>
+                        <div
+                        style={{
+                          marginTop:5,
+                          fontSize: 13,
+                          fontWeight: 800,
+                          overflow:"hidden",
+                          textOverflow:"ellipsis",
+                          whiteSpace:"nowrap",
+                        }}
+                        >
+                          {telegramDisplayName}
+                        </div>
+                        <div
+                        style={{
+                          marginTop: 3,
+                          fontSize: 11,
+                          opacity:0.7,
+                        }}
+                        >
+                          Telegram ID: {telegramId || "Not detected"}
+
+                        </div>
+
+                      </div>
+                      {telegramPhotoUrl ? (
+                        <img
+                        src={telegramPhotoUrl}
+                        alt="Telegram profile"
+                        style={{
+                          width:42,
+                          height:42,
+                          flex:"0 0 42px",
+                          borderRadius:"50%",
+                          objectFit:"cover",
+                          border:"1px solid rgba(0,217,255,.55)",
+                        }}
+                        />
+                      ):(
+                        <div
+                          aria-hidden="true"
+                          style={{
+                            width:42,
+                            height: 42,
+                            flex: "0 0 42px",
+                            borderRadius: "50%",
+                            display:"grid",
+                            placeItems:"center",
+                            background:"rgba(0,217,255,.40)",
+                            fontSize:18,
+                          }}
+                          >
+                           ✈️ 
+                          </div>
+                      )}
+                    </div>
                     <button type="button" className="drawer-main-btn drawer-main-btn-disabled" disabled>
                       <span className="drawer-btn-text">🛍️ Shopping</span>
                       <span className="drawer-coming-soon">Coming Soon</span>
                     </button>
                     <a
                       className="drawer-main-btn drawer-support-btn"
-                      href="https://t.me/Ai_polyfi_support"
+                      href="https://t.me/Ai_POLYFI"
                       target="_blank"
                       rel="noreferrer"
                       onClick={() => setMenuOpen(false)}
+                      
                     >
                       <span className="drawer-btn-text">🎧 Support</span>
-                      <span className="drawer-telegram">@Ai_polyfi_support</span>
+                      <span className="drawer-telegram">@Ai_POLYFI</span>
                     </a>
                   </div>
                 </aside>
@@ -839,19 +910,6 @@ export default function TimerPage() {
           <h1>AI POLIFY</h1>
           <img src={Logo} alt="AI POLIFY Logo" className="brand-logo" />
         </header>
-
-        <section className="glass-card" style={{ marginTop: 14, padding: 14, borderRadius: 18, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: "0.12em", color: "#00d9ff", marginBottom: 5 }}>TELEGRAM ACCOUNT</div>
-            <div style={{ fontSize: 15, fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{telegramDisplayName}</div>
-            <div style={{ marginTop: 4, fontSize: 12, opacity: 0.72 }}>Telegram ID: {telegramId || "Not detected"}</div>
-          </div>
-          {telegramPhotoUrl ? (
-            <img src={telegramPhotoUrl} alt="Telegram profile" style={{ width: 46, height: 46, borderRadius: "50%", objectFit: "cover", border: "1px solid rgba(0,217,255,.55)" }} />
-          ) : (
-            <div aria-hidden="true" style={{ width: 46, height: 46, flex: "0 0 46px", borderRadius: "50%", display: "grid", placeItems: "center", background: "rgba(0,217,255,.10)", border: "1px solid rgba(0,217,255,.40)", fontSize: 20 }}>✈️</div>
-          )}
-        </section>
 
         <section className="miner-card" aria-label="EPL Miner">
           <div className="miner-top-edge" />
