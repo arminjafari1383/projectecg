@@ -7,7 +7,7 @@ import React, {
 } from "react";
 
 import "./Timer.css";
-
+import { useNavigate } from "react-router-dom";
 import Logo from "../assets/2.png";
 import Blade from "../assets/1.png";
 import eplLogo from "../assets/epl-logo.png";
@@ -342,6 +342,7 @@ function CountdownHourglass({
 ========================================================= */
 
 export default function TimerPage() {
+  const navigate = useNavigate();
   // =========================================================
   // STATE
   // =========================================================
@@ -1266,9 +1267,7 @@ export default function TimerPage() {
            <button
            type="button"
            className="quick-action-item"
-           onClick={() => 
-            setMessage("🚧 Stake EPL coming soon.")
-           }
+           onClick={() => navigate("/stake")}
            >
             <div className="quick-action-left">
               <div className="quick-action-icon quick-action-icon-purple">
@@ -1276,7 +1275,7 @@ export default function TimerPage() {
               </div>
               <div className="quick-action-text">
                 <strong>
-                  Stake Epl
+                  Stake Ecg and usdt
                 </strong>
                 <span>
                   Stake and earn more
