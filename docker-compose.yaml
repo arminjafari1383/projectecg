@@ -26,6 +26,7 @@ services:
       POSTGRES_DB: mydb
       POSTGRES_USER: user
       POSTGRES_PASSWORD: pass
+      POSTGRES_PORT: "5432"
       DJANGO_DEBUG: "false"
 
     command: >
@@ -35,12 +36,39 @@ services:
       "
 
 
+  serverbot:
+    build: ./backend
+    container_name: django-serverbot
+    restart: always
+
+    volumes:
+      - ./backend:/backend
+
+    depends_on:
+      - db
+
+    env_file:
+      - ./backend/.env
+
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_DB: mydb
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: pass
+      POSTGRES_PORT: "5432"
+      DJANGO_DEBUG: "false"
+
+    command: >
+      python manage.py runserverbot
+
+
   frontend:
     build:
       context: ./frontend
       args:
         VITE_BOT_USERNAME: ${VITE_BOT_USERNAME:-Aipolynetbot}
         VITE_MINI_APP_SHORT_NAME: ${VITE_MINI_APP_SHORT_NAME:-app}
+
     container_name: react-frontend
     restart: always
 
@@ -64,6 +92,7 @@ services:
       args:
         VITE_BOT_USERNAME: ${VITE_BOT_USERNAME:-Aipolynetbot}
         VITE_MINI_APP_SHORT_NAME: ${VITE_MINI_APP_SHORT_NAME:-app}
+
     container_name: nginx-server
 
     ports:
