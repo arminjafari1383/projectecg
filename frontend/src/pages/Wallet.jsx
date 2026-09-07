@@ -587,6 +587,7 @@ export default function Wallet() {
       console.error("[WALLET_REPLACE] error", error);
       setConnectError(error?.message || "Could not replace wallet.");
       setErrorType("server_error");
+
     } finally {
       // both situation fail or success this state get false.
       setIsReplacingWallet(false);
@@ -606,21 +607,27 @@ export default function Wallet() {
   // COPY
   // ====================================================
 
-  //
+  // the public function for copy text for example(txhash and wallet address)
   const copyText = async (label, value) => {
+    // if didn't exists for copy function stop
     if (!value) return;
 
+    
     try {
+      // amount convert to string and insert to clipboard 
       await navigator.clipboard.writeText(String(value));
+      // after 1/8 seconds message copy
       setCopiedText(`${label} copied`);
       window.setTimeout(() => setCopiedText(""), 1800);
+      // if copy fail enter catch
     } catch {
       setCopiedText(`Could not copy ${label.toLowerCase()}`);
       window.setTimeout(() => setCopiedText(""), 1800);
     }
   };
 
-
+  
+  // for open contract list ecg
   const openContractLink = () => {
     window.open(ECG_CONTRACT_LINK, "_blank", "noopener,noreferrer");
   };
@@ -630,30 +637,42 @@ export default function Wallet() {
   // OPEN / CLOSE WITHDRAW
   // ====================================================
 
+  // this function for open withdraw realize self or referral
   const openWithdraw = (bucket = "ALL") => {
+    // clear error for previously message
     setWithdrawError("");
     setWithdrawNotice("");
     setAmount("");
+    // this parameters said source money ecg
     setWithdrawSource("ECG");
+    // this parameters self or referral
     setWithdrawBucket(bucket);
+    // exit money is ton
     setWithdrawAsset("TON");
+    // clear previously address wallet
     setDestinationWallet("");
     setIsWithdrawOpen(true);
   };
 
+  // this function as same as previously function
   const openUsdtWithdraw = (bucket = "ALL") => {
     setWithdrawError("");
     setWithdrawNotice("");
     setAmount("");
     setWithdrawSource("USDT");
     setWithdrawBucket(bucket);
+    // this function convert usdt to ton
     setWithdrawAsset("TON");
     setDestinationWallet("");
     setIsWithdrawOpen(true);
   };
 
+  
+  // this function for close withdraw function 
   const closeWithdraw = () => {
+    // if withdraw request sending didn't close withdraw page.
     if (isWithdrawing) return;
+    // despite didn't close app.
     setIsWithdrawOpen(false);
   };
 
@@ -662,14 +681,19 @@ export default function Wallet() {
   // WITHDRAW HISTORY
   // ====================================================
 
+  // this function get withdraw history.
   const loadWithdrawHistory = useCallback(async () => {
+    // if didn't wallet , history is empty and didn't send request.
     if (!address) {
       setWithdrawHistory([]);
       return;
     }
 
+    
     try {
+      // is loading history withdraw
       setWithdrawHistoryLoading(true);
+      // GET withdraw/history api
       const response = await api.get("/withdraw/history/", {
         params: { wallet_address: address },
       });
@@ -682,11 +706,14 @@ export default function Wallet() {
   }, [address]);
 
 
+  // if didn't wallet nothing work
   useEffect(() => {
     if (!address) return undefined;
 
+    // immedatily get withdrawhistory
     loadWithdrawHistory();
 
+    
     const timer = window.setInterval(loadWithdrawHistory, 10000);
 
     return () => window.clearInterval(timer);
@@ -810,13 +837,17 @@ export default function Wallet() {
 
     return () => window.clearInterval(timer);
   }, [address, loadReferralLevels]);
+
   // ====================================================
   // CALCULATIONS
   // ====================================================
 
+  // for compatibility by for respond backend ecg
   const ecgAsset = wallet?.assets?.ECG || wallet?.balances?.ECG || {};
   const usdtAsset = wallet?.assets?.USDT || wallet?.balances?.USDT || {};
 
+
+  // referral ecg for withdraw
   const referralProfitEcgUnlocked = Number(
     wallet?.referral_profit_ecg_unlocked ??
     wallet?.referral_available_ecg ??
@@ -825,64 +856,85 @@ export default function Wallet() {
     0
   );
 
+
   const referralAvailableEcg = referralProfitEcgUnlocked;
 
+  // profit 5% that 30 days didn't finish.
   const purchaseProfitLocked = Number(
     wallet?.purchase_profit_ecg_locked ??
     wallet?.self_profit_locked ??
     0
   );
+  
 
+  // Own ECG Unlocked (own profit unlock and ready for withdraw)
   const selfProfitUnlocked = Number(
     wallet?.purchase_profit_ecg_unlocked ??
     wallet?.ecg_self_unlocked ??
     0
   );
 
+  // total ecg profit
   const purchaseProfitBalance = useMemo(
     () =>
       Number(
+        // backend response
         wallet?.total_ecg_profit ??
+        // if backend didn't response.
         (Number(wallet?.self_profit_locked || 0) +
         Number(wallet?.ecg_self_unlocked || 0) +
         Number(wallet?.ecg_referral_profit || 0))
       ),
+      // if wallet change reload 
     [wallet]
   );
 
+  // available ecg for all withdraw 
   const withdrawableBalance = Number(
     wallet?.withdrawable_ecg_profit ??
+    // if backend didn't response
     (selfProfitUnlocked + referralProfitEcgUnlocked)
   );
 
+  // total purchase profit usdt
   const purchaseProfitUsdt = Number(
     wallet?.purchase_profit_usdt ??
     usdtAsset.available ??
     0
   );
+  
 
+  // own usdt locked
   const purchaseProfitUsdtLocked = Number(
     wallet?.purchase_profit_usdt_locked ?? 0
   );
 
+  // all usdt for withdraw
   const withdrawableUsdt = Number(
     wallet?.withdrawable_usdt_profit ??
     wallet?.purchase_profit_usdt_unlocked ??
     0
   );
 
+  // available own usdt
   const selfProfitUsdtUnlocked = Number(
     wallet?.self_profit_usdt_unlocked ?? 0
   );
 
+  // referral usdt unlock
   const referralProfitUsdtUnlocked = Number(
     wallet?.referral_profit_usdt_unlocked ??
     Math.max(withdrawableUsdt - selfProfitUsdtUnlocked, 0)
   );
 
+  // didn't referral only own profit ECG
   const ownEcgProfitTotal = purchaseProfitLocked + selfProfitUnlocked;
+
+  // didn't referral only own profit USDT
   const ownUsdtProfitTotal = purchaseProfitUsdtLocked + selfProfitUsdtUnlocked;
 
+
+  // choice ecg for referral or self
   const selectedEcgAvailable =
     withdrawBucket === "SELF"
       ? selfProfitUnlocked
@@ -890,6 +942,7 @@ export default function Wallet() {
         ? referralProfitEcgUnlocked
         : withdrawableBalance;
 
+  // choice usdt for referral or self
   const selectedUsdtAvailable =
     withdrawBucket === "SELF"
       ? selfProfitUsdtUnlocked
@@ -897,14 +950,23 @@ export default function Wallet() {
         ? referralProfitUsdtUnlocked
         : withdrawableUsdt;
 
+  // Convert ecg to ton
   const withdrawableTon = useMemo(() => {
+
+    // choices buckect inventory
     const ecg = selectedEcgAvailable;
+
+    // price or didn't inventory == 0
     if (!tonPrice || !ecg) {
       return "0.0000";
     }
+    // calculate ton price
     return (ecg / (tonPrice * ECG_PER_USDT)).toFixed(4);
   }, [selectedEcgAvailable, tonPrice]);
 
+
+
+  // calculate usdt price
   const withdrawableUsdtTon = useMemo(() => {
     if (!tonPrice || !selectedUsdtAvailable) {
       return "0.0000";
@@ -912,7 +974,10 @@ export default function Wallet() {
     return (selectedUsdtAvailable / tonPrice).toFixed(4);
   }, [selectedUsdtAvailable, tonPrice]);
 
+  
+  // function for sum user profit level one
   const sumReferralProfit = (users = [], asset = "ECG") =>
+    // iterate all user and sumition
     users.reduce((sum, user) => {
       if (asset === "USDT") {
         return sum + Number(user?.profit_usdt || 0);
@@ -920,30 +985,43 @@ export default function Wallet() {
       return sum + Number(user?.profit_ecg ?? user?.profit ?? 0);
     }, 0);
 
+
+  
+  // sum all level one and profit 5% for ecg.
   const uniLevelFivePercentEcg = sumReferralProfit(
     referralLevels?.level_1?.users || [],
     "ECG"
   );
+
+
+  // sum all level one and profit 5% for usdt.
   const uniLevelFivePercentUsdt = sumReferralProfit(
     referralLevels?.level_1?.users || [],
     "USDT"
   );
 
+  
+
+  // sum all level two until five and profit 1% for ecg.
   const uniLevelOnePercentEcg = [2, 3, 4, 5].reduce(
     (sum, level) =>
       sum + sumReferralProfit(referralLevels?.[`level_${level}`]?.users || [], "ECG"),
     0
   );
+
+  // sum all level two until five and profit 1% for usdt.
   const uniLevelOnePercentUsdt = [2, 3, 4, 5].reduce(
     (sum, level) =>
       sum + sumReferralProfit(referralLevels?.[`level_${level}`]?.users || [], "USDT"),
     0
   );
 
+  // if backend have number level1 and if backend didn't have referral table ecg
   const referralLevel1FivePercentEcg = Number(
     wallet?.referral_level1_profit_ecg ?? uniLevelFivePercentEcg ?? 0
   );
 
+  // if backend have number level1 and if backend didn't have referral table usdt
   const referralLevels2To5OnePercentEcg = Number(
     wallet?.referral_levels2_5_profit_ecg ?? uniLevelOnePercentEcg ?? 0
   );
@@ -962,8 +1040,11 @@ export default function Wallet() {
   );
 
   const canWithdrawEcgSelf = selfProfitUnlocked > 0;
+
   const canWithdrawEcgReferral = referralProfitEcgUnlocked > 0;
+
   const canWithdrawUsdtSelf = selfProfitUsdtUnlocked > 0;
+
   const canWithdrawUsdtReferral = referralProfitUsdtUnlocked > 0;
 
   // ====================================================
@@ -990,6 +1071,7 @@ export default function Wallet() {
         </div>
 
 
+        {/* if didn't address */}
         {!address ? (
 
           // =================================================
@@ -998,6 +1080,7 @@ export default function Wallet() {
 
           <div className="wallet-connect-state">
 
+            {/* show button ton connect */}
             <div className="connect-button-wrapper">
               <TonConnectButton />
             </div>
@@ -1070,12 +1153,14 @@ export default function Wallet() {
                   </div>
 
                   <div className="wallet-address-main">
+                    {/* show short wallet address */}
                     {shortenMiddle(displayAddress || address, 6, 6)}
                   </div>
 
                 </div>
 
 
+                {/* click for copy address */}
                 <button
                   type="button"
                   className="icon-action-btn"
@@ -1273,6 +1358,7 @@ export default function Wallet() {
             )}
 
 
+            {/* if wallet exists show four box */}
             {!wallet ? (
 
               <div className="wallet-loading-card">

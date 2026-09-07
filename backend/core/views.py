@@ -65,17 +65,6 @@ service_url = TON_SERVICE_URL
 # ============================================================
 
 def _ledger_total(user, ledger_type, asset="ECG"):
-    """
-    محاسبه مجموع یک نوع خاص از Ledger برای یک کاربر و دارایی مشخص.
-    
-    Args:
-        user: شیء AppUser
-        ledger_type: نوع Ledger (مانند DIRECT_REFERRAL_BONUS, SELF_PROFIT_UNLOCK و ...)
-        asset: نام دارایی (ECG, USDT, EPL) - پیش‌فرض ECG
-    
-    Returns:
-        Decimal: مجموع مقادیر
-    """
     zero = Decimal("0")
     asset = str(asset).upper()
     total = zero
