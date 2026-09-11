@@ -14,28 +14,42 @@ from django.utils import timezone
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from .services import (
-    get_or_create_user, 
-    apply_referral, 
-    register_purchase, 
-    ecg_to_ton,
-    fetch_ton_usd_rate,
-    ECG_PER_USD,
-    register_purchase_usdt,
-    register_purchase_bnb,
-    reconcile_existing_referral_join_rewards,
-    release_matured_purchase_profits,
+    get_or_create_user,# this function for find or create user 
+    apply_referral, # this function for connected referral
+    register_purchase, # save buy
+    ecg_to_ton,# convert ecg to tom
+    fetch_ton_usd_rate, # get price ton by usdt
+    ECG_PER_USD,# cost ecg to usdt
+    register_purchase_usdt,# save buy by usdt 
+    register_purchase_bnb, # save buy by bnb
+    reconcile_existing_referral_join_rewards,#for edit and sync referral reward history
+    release_matured_purchase_profits,# this function for free profit lock
 )
-from .referral_utils import normalize_inviter_code
+from .referral_utils import normalize_inviter_code # this file for normalize referral link
 from .models import (
-    AppUser, Wallet, AssetBalance, Ledger, Purchase, 
-    WithdrawRequest, ReferralLevel,
-    PurchaseUSDT, PurchaseBNB
+    AppUser,
+    Wallet,
+    AssetBalance, # show really inventory for each user
+    Ledger, # history shange
+    Purchase, 
+    WithdrawRequest, # withdraw requests
+    ReferralLevel, # show sturcture levels
+    PurchaseUSDT,
+    PurchaseBNB
 )
+# create serilizer for api django
 from .serializers import WalletSerializer, PurchaseSerializer, UserSerializer
-from django.conf import settings
+
+# transaction for databasetranstions and integrityerror for error unique constraint
 from django.db import transaction, IntegrityError
+
+# for direct sun for db
 from django.db.models import Sum
+
+# for error like database is locked
 from django.db.utils import OperationalError
+
+# for admin session token sign.
 from django.core import signing
 import os
 import requests
@@ -46,17 +60,20 @@ import hmac
 from django.conf import settings
 import struct
 
-# =======================
-# تنظیمات لاگینگ
-# =======================
+
+# special logger for this file
 logger = logging.getLogger(__name__)
+
 
 # TON service config
 TON_SERVICE_URL = os.getenv(
+    # first enviroment variable
     "TON_SERVICE_URL",
+    # if didn't url use this url.
     "http://tonservice:3001"
 )
 
+# only create alias
 service_url = TON_SERVICE_URL
 
 
@@ -64,13 +81,20 @@ service_url = TON_SERVICE_URL
 # HELPER FUNCTIONS
 # ============================================================
 
+
+# this is important helper for wallet.
+# function input is user,ledger_type,asset
+# how much all direct profit referral ecg for this user? 
 def _ledger_total(user, ledger_type, asset="ECG"):
     zero = Decimal("0")
     asset = str(asset).upper()
     total = zero
 
+    # Get all ledger for this user for example(DIRECT_REFERRAL_BOUNS)
     for row in user.ledgers.filter(typ=ledger_type):
+        # for each ledger is convert Metadata JSON to Dictionary
         meta = dict(row.meta or {})
+        # choices each probiablity name 
         row_asset = str(
             meta.get("asset")
             or meta.get("profit_asset")
@@ -79,23 +103,21 @@ def _ledger_total(user, ledger_type, asset="ECG"):
             or "ECG"
         ).upper()
 
+        # only ledger about asset sum.
         if row_asset == asset:
             total += Decimal(str(row.amount or 0))
 
+    
     return total
 
-
+# this function is like _ledger_total
 def _ledger_total_for_asset(user, ledger_type, asset="ECG"):
-    """
-    نسخه جایگزین با نام واضح‌تر - دقیقاً همان کار را انجام می‌دهد.
-    """
     return _ledger_total(user, ledger_type, asset)
 
 
+
+# this function only for convert referral to REFERRAL
 def _normalize_withdraw_bucket(value):
-    """
-    Normalize frontend/legacy bucket names to SELF / REFERRAL / ALL.
-    """
     bucket = str(value or "").strip().upper()
 
     if bucket in {"SELF", "ECG_SELF", "USDT_SELF"}:
@@ -107,48 +129,55 @@ def _normalize_withdraw_bucket(value):
     return "ALL"
 
 
+# this function means that how much bring each bucket
 def _withdraw_reservation_breakdown(user, asset="ECG"):
-    """
-    Return withdrawal reservations for one source asset.
-
-    New withdrawals carry withdraw_bucket=SELF/REFERRAL. Older USDT
-    withdrawals did not store that field, so they are tracked as LEGACY.
-    Only rows that actually deducted AssetBalance at request time count.
-    """
     zero = Decimal("0")
     asset = str(asset or "ECG").upper()
 
+    # this for old withdraw that backend didn't save
     totals = {
         "SELF": zero,
         "REFERRAL": zero,
         "LEGACY": zero,
     }
 
+
+    # read all withdraw ledger 
     for row in user.ledgers.filter(typ="WITHDRAW"):
         meta = dict(row.meta or {})
 
+        # reliaze that which type of withdraw money
         source_asset = str(
             meta.get("source_asset") or "ECG"
         ).upper()
 
+        # if didn't choice my asset ignore them
         if source_asset != asset:
             continue
 
+        # reviews all status like (FAILED,CANCELLED,CANCELED,REJECTED) 
         row_status = str(
             meta.get("status") or ""
         ).upper()
 
+        # if status this parameters didn't use inventory
         if row_status in {"FAILED", "CANCELLED", "CANCELED", "REJECTED"}:
             continue
 
+        # only withdrawal succefully is send request for withdraw successfully and decreases. 
         if not meta.get("balance_deducted_at_request"):
             continue
 
+        # ledger withdraw usually negative then abs for convert to postive
         amount = abs(Decimal(str(row.amount or 0)))
+
+        # this part for relaize for self or referral
         bucket = _normalize_withdraw_bucket(
             meta.get("withdraw_bucket")
         )
 
+
+        # if for self or referral sum to amount
         if bucket in {"SELF", "REFERRAL"}:
             totals[bucket] += amount
         else:
@@ -157,58 +186,59 @@ def _withdraw_reservation_breakdown(user, asset="ECG"):
     return totals
 
 
-def _profit_bucket_snapshot(user, asset="ECG", authoritative_available=None):
-    """
-    Build the current SELF/REFERRAL profit balances from accounting data.
 
-    1) Start from gross earning ledgers.
-    2) Subtract bucket-tagged withdrawals.
-    3) Subtract legacy unbucketed withdrawals (old USDT endpoint).
-       Because the old endpoint discarded the requested bucket, exact historic
-       attribution is impossible. Referral is consumed first because it is the
-       instantly-withdrawable bucket; SELF is consumed only after referral.
-    4) Cap the result to AssetBalance.available, which is the hard accounting
-       source of truth and was already debited at request time.
-    """
+# this function for calculate main
+def _profit_bucket_snapshot(user, asset="ECG", authoritative_available=None):
     zero = Decimal("0")
     asset = str(asset or "ECG").upper()
 
+    # save all own profit that spend 30 days.
     gross_self = _ledger_total(
         user,
         "SELF_PROFIT_UNLOCK",
         asset,
     )
+
+    # all Referral profit history
     gross_referral = (
         _ledger_total(user, "DIRECT_REFERRAL_BONUS", asset)
         + _ledger_total(user, "INDIRECT_REFERRAL_BONUS", asset)
     )
 
+    # get withdraw 
     reserved = _withdraw_reservation_breakdown(user, asset)
 
+    # avaliable for self
     self_available = max(
         zero,
         gross_self - reserved["SELF"],
     )
+
+    # available for referral
     referral_available = max(
         zero,
         gross_referral - reserved["REFERRAL"],
     )
 
-    # Legacy USDT withdrawals were deducted from AssetBalance but the old
-    # backend did not persist SELF/REFERRAL. Consume referral first.
+
+    # for old withdraw but it didn't understand for self or referral
     legacy_remaining = reserved["LEGACY"]
 
+    # but code decided first decrease as referral
     take = min(referral_available, legacy_remaining)
+
+    # if show inventory if thing exists decrese from self
     referral_available -= take
     legacy_remaining -= take
+
 
     take = min(self_available, legacy_remaining)
     self_available -= take
     legacy_remaining -= take
 
-    # AssetBalance.available is authoritative. If historical rows or migrations
-    # leave ledger-derived buckets above that hard balance, trim the difference
-    # rather than showing money that cannot actually be withdrawn.
+
+
+    
     if authoritative_available is not None:
         hard_available = max(
             zero,
@@ -239,21 +269,10 @@ def _profit_bucket_snapshot(user, asset="ECG", authoritative_available=None):
     }
 
 
+
+
+
 def _reconcile_profit_asset_available(user, asset="ECG"):
-    """
-    Rebuild AssetBalance.available from the accounting ledgers.
-
-    This is an idempotent legacy backfill + ongoing consistency check:
-      available = unlocked SELF profit + referral profit - reserved withdrawals
-
-    Older deployments could write referral-profit Ledger rows / ReferralLevel
-    profit snapshots without crediting AssetBalance.available.  Setting the
-    balance to the ledger-derived net amount (instead of adding a delta) makes
-    the repair safe to run repeatedly and also respects historical withdrawals.
-
-    ECG/USDT AssetBalance.available is used by this project only for unlocked
-    profit; locked principal/profit remains in AssetBalance.locked.
-    """
     asset = str(asset or "ECG").upper()
     if asset not in {"ECG", "USDT"}:
         return None
@@ -299,8 +318,9 @@ def _reconcile_profit_asset_available(user, asset="ECG"):
 
     return balance
 
+
+# show only withdraw for each bucket
 def _withdrawn_total_for_bucket(user, asset="ECG", bucket="SELF"):
-    """Backward-compatible helper used by older code paths."""
     bucket = _normalize_withdraw_bucket(bucket)
     if bucket not in {"SELF", "REFERRAL"}:
         return Decimal("0")
@@ -339,6 +359,10 @@ TONCENTER_TESTNET_URL = os.getenv(
 ).rstrip("/")
 
 
+
+
+#####################
+
 def _toncenter_base_url(network: str) -> str:
     """
     TON Connect network id:
@@ -364,13 +388,10 @@ def _toncenter_headers() -> dict:
     return headers
 
 
-def _ton_address_to_raw(address: str) -> str:
-    """
-    Convert a TON raw or TEP-2 user-friendly address to canonical raw form:
-        workchain:64_hex_chars
+########################
 
-    No external Python TON package is required.
-    """
+
+def _ton_address_to_raw(address: str) -> str:
     value = str(address or "").strip()
 
     if not value:
