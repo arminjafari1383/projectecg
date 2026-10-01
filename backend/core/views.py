@@ -2430,13 +2430,20 @@ def _get_or_create_telegram_user(request):
             update_fields.append("is_active")
 
         if hasattr(user, "last_active"):
-            user.last_active = timezone.now()
-            update_fields.append("last_active")
+            now = timezone.now()
+
+            if (
+                user.last_active is None
+                or now - user.last_active >= timezone.timedelta(minutes=5)
+            ):
+                user.last_active = now
+                update_fields.append("last_active")
 
         if update_fields:
             user.save(update_fields=list(dict.fromkeys(update_fields)))
 
-        Wallet.objects.get_or_create(user=user)
+        if created:
+            Wallet.objects.get_or_create(user=user)
 
         apply_result = None
         inviter_code = identity.get("inviter_code")
@@ -2917,7 +2924,7 @@ def get_referral_levels(request):
 
     _ = referral_meta
 
-    reconcile_existing_referral_join_rewards(user)
+    # reconcile_existing_referral_join_rewards(user)
 
     level_obj = ReferralLevel.objects.filter(user=user).first()
 
