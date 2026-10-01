@@ -857,15 +857,38 @@ def connect_wallet(request):
                 # Referral remains one-time and belongs to Telegram identity,
                 # not to a particular connected wallet.
                 apply_result = None
+
                 if inviter_code and not user.inviter_id:
-                    apply_result = apply_referral(inviter_code, user)
-                    user.refresh_from_db()
-                    if not apply_result.get("ok"):
-                        logger.warning(
-                            "[CONNECT_TELEGRAM_FIRST] referral failed user=%s reason=%s",
+                    normalized_code = normalize_inviter_code(inviter_code)
+                    own_code = normalize_inviter_code(user.referral_code)
+
+                    if normalized_code and normalized_code == own_code:
+                        logger.info(
+                            "[CONNECT_TELEGRAM_FIRST] own referral ignored user=%s code=%s",
                             user.id,
-                            apply_result.get("reason"),
+                            normalized_code,
                         )
+
+                        apply_result = {
+                            "ok": False,
+                            "reason": "self_referral",
+                            "message": "Own referral code ignored.",
+                        }
+
+                    elif normalized_code:
+                        apply_result = apply_referral(
+                            normalized_code,
+                            user,
+                        )
+
+                        user.refresh_from_db()
+
+                        if not apply_result.get("ok"):
+                            logger.warning(
+                                "[CONNECT_TELEGRAM_FIRST] referral failed user=%s reason=%s",
+                                user.id,
+                                apply_result.get("reason"),
+                            )
 
                 current_wallet = _public_wallet_address(user)
                 wallet_changed = bool(
@@ -2419,39 +2442,67 @@ def _get_or_create_telegram_user(request):
         inviter_code = identity.get("inviter_code")
 
         if inviter_code and not user.inviter_id:
-            try:
-                logger.info(
-                    "[TELEGRAM_IDENTITY] Applying referral: user=%s code=%s",
-                    user.id,
-                    inviter_code,
-                )
-                apply_result = apply_referral(inviter_code, user)
-                user.refresh_from_db()
 
-                if apply_result.get("ok"):
-                    logger.info(
-                        "[TELEGRAM_IDENTITY] Referral result user=%s reason=%s",
-                        user.id,
-                        apply_result.get("reason"),
-                    )
-                else:
-                    logger.warning(
-                        "[TELEGRAM_IDENTITY] Referral failed user=%s reason=%s",
-                        user.id,
-                        apply_result.get("reason"),
-                    )
-            except Exception as exc:
-                logger.exception(
-                    "[TELEGRAM_IDENTITY] Could not apply inviter code user=%s code=%s: %s",
+            normalized_code = normalize_inviter_code(inviter_code)
+            own_code = normalize_inviter_code(user.referral_code)
+
+            if normalized_code and normalized_code == own_code:
+
+                logger.info(
+                    "[TELEGRAM_IDENTITY] own referral ignored user=%s code=%s",
                     user.id,
-                    inviter_code,
-                    str(exc),
+                    normalized_code,
                 )
+
                 apply_result = {
                     "ok": False,
-                    "reason": "error",
-                    "message": "Unable to apply referral code.",
+                    "reason": "self_referral",
+                    "message": "Own referral code ignored.",
                 }
+
+            elif normalized_code:
+
+                try:
+                    logger.info(
+                        "[TELEGRAM_IDENTITY] Applying referral: user=%s code=%s",
+                        user.id,
+                        normalized_code,
+                    )
+
+                    apply_result = apply_referral(
+                        normalized_code,
+                        user,
+                    )
+
+                    user.refresh_from_db()
+
+                    if apply_result.get("ok"):
+                        logger.info(
+                            "[TELEGRAM_IDENTITY] Referral result user=%s reason=%s",
+                            user.id,
+                            apply_result.get("reason"),
+                        )
+                    else:
+                        logger.warning(
+                            "[TELEGRAM_IDENTITY] Referral failed user=%s reason=%s",
+                            user.id,
+                            apply_result.get("reason"),
+                        )
+
+                except Exception as exc:
+                    logger.exception(
+                        "[TELEGRAM_IDENTITY] Could not apply inviter code "
+                        "user=%s code=%s: %s",
+                        user.id,
+                        normalized_code,
+                        str(exc),
+                    )
+
+                    apply_result = {
+                        "ok": False,
+                        "reason": "error",
+                        "message": "Unable to apply referral code.",
+                    }
 
     logger.info(
         "[TELEGRAM_IDENTITY] user=%s telegram_id=%s created=%s wallet=%s",
