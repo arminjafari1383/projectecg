@@ -874,7 +874,7 @@ def reconcile_existing_referral_join_rewards(owner: AppUser):
     Level 1 target: 1000 EPL per referral row.
     Levels 2-5 target: 500 EPL per referral row.
 
-    The top-up is real accounting: Wallet.referral_bonus and Ledger are updated,
+    The top-up is real accounting: AssetBalance(EPL) and Ledger are updated,
     then ReferralLevel JSON is synchronized to the actual credited total.
     """
 
@@ -888,14 +888,16 @@ def reconcile_existing_referral_join_rewards(owner: AppUser):
     if not level_obj:
         return False
 
-    ensure_user_has_wallet(owner)
-    wallet = (
-        Wallet.objects
+    epl_balance, _ = (
+        AssetBalance.objects
         .select_for_update()
-        .get(user=owner)
+        .get_or_create(
+            user=owner,
+            asset="EPL",
+        )
     )
 
-    wallet_changed = False
+    balance_changed = False
     changed_fields = []
 
     for level in range(1, 6):
@@ -941,11 +943,17 @@ def reconcile_existing_referral_join_rewards(owner: AppUser):
             if credited < target:
                 top_up = target - credited
 
-                wallet.referral_bonus = (
-                    (wallet.referral_bonus or Decimal("0"))
+                epl_balance.available = (
+                    Decimal(str(epl_balance.available or 0))
                     + top_up
                 )
-                wallet_changed = True
+
+                epl_balance.total_earned = (
+                    Decimal(str(epl_balance.total_earned or 0))
+                    + top_up
+                )
+
+                balance_changed = True
 
                 Ledger.objects.create(
                     user=owner,
@@ -971,9 +979,6 @@ def reconcile_existing_referral_join_rewards(owner: AppUser):
                     target,
                 )
 
-            # Keep the tree row aligned with the actual join bonus credited for
-            # this owner/downline relationship. For a legacy direct referral
-            # that had 3 EPL, this becomes exactly 1000 after the 997 top-up.
             shown_bonus = max(
                 Decimal(str(row.get("referral_bonus", 0) or 0)),
                 credited,
@@ -988,20 +993,18 @@ def reconcile_existing_referral_join_rewards(owner: AppUser):
             setattr(level_obj, level_field, users)
             changed_fields.append(level_field)
 
-    if wallet_changed:
-        wallet.save(
+    if balance_changed:
+        epl_balance.save(
             update_fields=[
-                "referral_bonus",
-                "updated_at",
+                "available",
+                "total_earned",
             ]
         )
 
     if changed_fields:
         level_obj.save(update_fields=changed_fields)
 
-    return wallet_changed or bool(changed_fields)
-
-
+    return balance_changed or bool(changed_fields)
 # ============================================================
 # Update referral investment
 # ============================================================
