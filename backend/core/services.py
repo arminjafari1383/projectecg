@@ -16,6 +16,9 @@ from .models import (
     ReferralLevel,
     PurchaseUSDT,
     PurchaseBNB,
+    PurchaseRequest,
+    ReferralRewardCap,
+    NFTOrder
 )
 
 
@@ -31,6 +34,18 @@ ECG_PER_USD = Decimal("312")
 SELF_BONUS_RATE = Decimal("0.05")
 UPLINE_RATE = Decimal("0.05")
 INDIRECT_UPLINE_RATE = Decimal("0.01")
+REFERRAL_RATES = {
+    1: Decimal("0.10"),
+    2: Decimal("0.05"),
+    3: Decimal("0.04"),
+    4: Decimal("0.03"),
+    5: Decimal("0.03"),
+    6: Decimal("0.02"),
+    7: Decimal("0.02"),
+    8: Decimal("0.01"),
+}
+
+REWARD_CAP_MULTIPLER = Decimal("10")
 
 DIRECT_REFERRAL_REWARD = Decimal("1000")
 INDIRECT_REFERRAL_REWARD = Decimal("500")
@@ -109,7 +124,7 @@ def _sync_replaced_wallet_in_referral_tree(
     current = user.inviter
     level = 1
 
-    while current and level <= 5:
+    while current and level <= 8:
         level_obj = (
             ReferralLevel.objects
             .select_for_update()
@@ -650,7 +665,7 @@ def update_referral_levels(
     current = direct_inviter
     level = 1
 
-    while current and level <= 5:
+    while current and level <= 8:
 
         # ----------------------------------------------------
         # Ensure ReferralLevel exists
@@ -1702,6 +1717,7 @@ def register_purchase(
     ton_tx_hash: str,
     output_asset: str = "ECG",
     is_test: bool = False,
+    ton_usd_rate:Decimal = None,
 ) -> Purchase:
 
     logger.info(
@@ -1734,7 +1750,14 @@ def register_purchase(
     # Calculate
     # --------------------------------------------------------
 
-    rate = fetch_ton_usd_rate()
+    rate = (
+    Decimal(str(ton_usd_rate))
+    if ton_usd_rate is not None
+    else fetch_ton_usd_rate()
+    )
+
+    if rate <= 0:
+        raise ValueError("Invalid TON/USD rate")
 
     usd_value = (
         ton_amount * rate
@@ -1840,6 +1863,11 @@ def register_purchase(
         self_profit_unlock_at=self_profit_unlock_at,
     )
 
+    increase_reward_cap(
+    user=user,
+    purchase_ton=ton_amount
+    )
+
 
     ensure_user_has_wallet(user)
 
@@ -1929,28 +1957,17 @@ def register_purchase(
     # Direct upline bonus
     # --------------------------------------------------------
 
-    upline_result = credit_direct_upline_purchase_bonus(
 
-        buyer=user,
-
-        bonus=upline_bonus,
-
-        invoice_no=invoice_no,
-
-        tx_hash=ton_tx_hash,
-
-        currency="TON",
-
-        is_test=is_test,
-
-        asset=output_asset,
+    referral_results = credit_capped_referral_bonuses(
+    buyer=user,
+    purchase_output=output_amount,
+    purchase_ton=ton_amount,
+    invoice_no=invoice_no,
+    tx_hash=ton_tx_hash,
+    asset=output_asset,
+    is_test=is_test,
     )
 
-
-    logger.info(
-        "[BUY] upline result: %s",
-        upline_result,
-    )
 
 
     update_user_investment(
@@ -1959,34 +1976,7 @@ def register_purchase(
     )
 
 
-    # --------------------------------------------------------
-    # Indirect referral bonus
-    # --------------------------------------------------------
-
-    indirect_results = (
-        credit_indirect_upline_purchase_bonuses(
-
-            buyer=user,
-
-            purchase_ecg_value=output_amount,
-
-            invoice_no=invoice_no,
-
-            tx_hash=ton_tx_hash,
-
-            currency="TON",
-
-            is_test=is_test,
-
-            asset=output_asset,
-        )
-    )
-
-
-    logger.info(
-        "[BUY] indirect results: %s",
-        indirect_results,
-    )
+ 
 
 
     update_user_total_investment(
@@ -2656,3 +2646,402 @@ def update_user_total_earned(
     )
 
     return total_earned
+
+
+class PurchaseRequestError(Exception):
+    def __init__(self,message,code="invalid",http_status=409):
+        super().__init__(message)
+        self.code = code
+        self.http_status = http_status
+
+def create_purchase_request(user,ton_amount,receipt_hash,wallet_address,output_asset="ECG",merchant_address="",network="-239",boc=""):
+    output_asset = str(output_asset or "ECG").upper()
+    if output_asset not in {"ECG","USDT"}:
+        raise ValueError("Invalid output asset")
+    existing = PurchaseRequest.objects.filter(receipt_hash=receipt_hash).first()
+    if existing:
+        return existing, False
+
+    if Purchase.objects.filter(ton_tx_hash=receipt_hash).exists():
+        raise ValueError("TX already registered")
+
+    row = PurchaseRequest.objects.create(
+        user=user,
+        wallet_address=wallet_address,
+        merchant_address=merchant_address,
+        ton_amount=ton_amount,
+        ton_usd_rate = fetch_ton_usd_rate(),
+        output_asset=output_asset,
+        network=str(network or "-239"),
+        receipt_hash=receipt_hash,
+        boc=boc,
+        status=PurchaseRequest.STATUS_PENDING,
+    )
+    return row,True
+
+@transaction.atomic
+def approve_purchase_request(request_id):
+    req = (PurchaseRequest.objects.select_for_update()
+           .select_related("user").filter(pk=request_id).first())
+    if not req:
+        raise PurchaseRequestError("Purchase request not found.","not_found","404")
+
+    if req.status == PurchaseRequest.STATUS_APPROVED:
+        return req,True
+
+    if req.status != PurchaseRequest.STATUS_PENDING:
+        raise PurchaseRequestError(
+            f"Only PENDING requests can be approved(current:{req.status}).","not_pending")
+    try:
+        purchase = register_purchase(
+            req.user,req.ton_amount,req.receipt_hash,
+            output_asset=req.output_asset,
+            ton_usd_rate=req.ton_usd_rate,
+        )
+
+    except ValueError as exc:
+        raise PurchaseRequestError(str(exc,"register_failed"))
+
+    req.status = PurchaseRequest.STATUS_APPROVED
+    req.purchase = purchase
+    req.reviewed_at = timezone.now()
+    req.save(update_fields=["status","purchase","reviewed_at","updated_at"])
+    return req,False
+
+@transaction.atomic
+def reject_purchase_request(request_id,note=""):
+    req = PurchaseRequest.objects.select_for_update().filter(pk=request_id).first()
+    if not req:
+        raise PurchaseRequestError("Purchase request not found.","not_found",404)
+
+    if req.status == PurchaseRequest.STATUS_REJECTD:
+        return req,True
+
+    if req.status != PurchaseRequest.STATUS_PENDING:
+        raise PurchaseRequestError(
+            f"Only PENDING requests can be rejected(current:{req.status}).","not_pending")
+
+    req.status = PurchaseRequest.STATUS_REJECTD
+    req.reviewed_at = timezone.now()
+    req.review_note = str(note or "")[:255]
+    req.save(update_fields=["status","reviewed_at","review_note","updated_at"])
+    return req,False
+
+
+@transaction.atomic
+def increase_reward_cap(user, purchase_ton):
+
+    purchase_ton = Decimal(str(purchase_ton))
+
+    if purchase_ton <= 0:
+        return
+
+    cap, _ = ReferralRewardCap.objects.get_or_create(
+        user=user
+    )
+
+    cap = ReferralRewardCap.objects.select_for_update().get(
+        pk=cap.pk
+    )
+
+    cap.personal_purchase_ton += purchase_ton
+
+    cap.cap_ton = (
+        cap.personal_purchase_ton
+        * REWARD_CAP_MULTIPLER
+    )
+
+    cap.save()
+
+def calculate_capped_referral_reward(
+    expected_reward_ton,
+    cap
+):
+    expected_reward_ton = Decimal(
+        str(expected_reward_ton)
+    )
+
+    if expected_reward_ton <= 0:
+        return Decimal("0"), Decimal("0")
+
+    remaining = max(
+        Decimal("0"),
+        cap.cap_ton - cap.used_ton
+    )
+
+    if cap.personal_purchase_ton <= 0:
+        paid = Decimal("0")
+    else:
+        paid = min(
+            expected_reward_ton,
+            remaining
+        )
+
+    burned = expected_reward_ton - paid
+
+    return paid, burned
+
+
+
+@transaction.atomic
+def credit_capped_referral_bonuses(
+    buyer,
+    purchase_output,
+    purchase_ton,
+    invoice_no,
+    tx_hash,
+    asset="ECG",
+    is_test=False,
+):
+    """
+    Pay up to 8 upline levels, subject to personal
+    purchase eligibility and 10x reward cap.
+
+    This function is for purchases whose base
+    input value is known in TON.
+    """
+
+    purchase_output = Decimal(str(purchase_output))
+    purchase_ton = Decimal(str(purchase_ton))
+    asset = str(asset).upper()
+
+    if asset not in {"ECG", "USDT"}:
+        raise ValueError("Unsupported reward asset")
+
+    if purchase_output <= 0 or purchase_ton <= 0:
+        raise ValueError("Invalid purchase amounts")
+
+    results = []
+    current = buyer.inviter
+
+    for level in range(1, 9):
+        if current is None:
+            break
+
+        inviter = (
+            AppUser.objects
+            .select_for_update()
+            .get(pk=current.pk)
+        )
+
+        rate = REFERRAL_RATES[level]
+
+        expected_asset = (
+            purchase_output * rate
+        )
+
+        expected_ton = (
+            purchase_ton * rate
+        )
+
+        cap, _ = ReferralRewardCap.objects.get_or_create(
+            user=inviter
+        )
+
+        cap = (
+            ReferralRewardCap.objects
+            .select_for_update()
+            .get(pk=cap.pk)
+        )
+
+        paid_ton_limit, _ = (
+            calculate_capped_referral_reward(
+                expected_ton,
+                cap
+            )
+        )
+
+        # Convert the allowed TON value back into
+        # the actual output asset.
+        raw_paid_asset = (
+            expected_asset * paid_ton_limit
+            / expected_ton
+        )
+
+        paid_asset = raw_paid_asset.quantize(
+            Decimal("0.00000001"),
+            rounding=ROUND_DOWN
+        )
+
+        # Calculate actual TON cap consumption
+        # after rounding the asset payout.
+        actual_paid_ton = (
+            paid_asset * purchase_ton
+            / purchase_output
+        )
+
+        burned_ton = max(
+            Decimal("0"),
+            expected_ton - actual_paid_ton
+        )
+
+        burned_asset = max(
+            Decimal("0"),
+            expected_asset - paid_asset
+        )
+
+        # Ledger.amount supports 6 decimal places.
+        # The reward balance stores the paid asset.
+        if paid_asset > 0:
+            balance, _ = (
+                AssetBalance.objects
+                .select_for_update()
+                .get_or_create(
+                    user=inviter,
+                    asset=asset
+                )
+            )
+
+            balance.available += paid_asset
+            balance.total_earned += paid_asset
+
+            balance.save(update_fields=[
+                "available",
+                "total_earned"
+            ])
+
+            update_level_profit(
+                inviter,
+                level,
+                buyer.wallet_address,
+                paid_asset,
+                asset=asset
+            )
+
+        cap.used_ton += actual_paid_ton
+        cap.burned_ton += burned_ton
+
+        cap.save(update_fields=[
+            "used_ton",
+            "burned_ton",
+            "updated_at"
+        ])
+
+        Ledger.objects.create(
+            user=inviter,
+            typ=(
+                "DIRECT_REFERRAL_BONUS"
+                if level == 1
+                else "INDIRECT_REFERRAL_BONUS"
+            ),
+            amount=paid_asset.quantize(
+                Decimal("0.000001"),
+                rounding=ROUND_DOWN
+            ),
+            meta={
+                "invoice": invoice_no,
+                "tx": tx_hash,
+                "buyer_user_id": buyer.id,
+                "buyer": buyer.wallet_address,
+                "currency": "TON",
+                "asset": asset,
+                "level": f"level_{level}",
+                "percent": str(rate * 100),
+                "expected_ton": str(expected_ton),
+                "paid_ton": str(actual_paid_ton),
+                "burned_ton": str(burned_ton),
+                "paid_asset": str(paid_asset),
+                "burned_asset": str(burned_asset),
+                "is_test": is_test,
+                "reward_cap_applied": True,
+            }
+        )
+
+        results.append({
+            "level": level,
+            "user_id": inviter.id,
+            "percent": str(rate * 100),
+            "paid_ton": str(actual_paid_ton),
+            "burned_ton": str(burned_ton),
+            "paid_asset": str(paid_asset),
+            "asset": asset,
+        })
+
+        current = inviter.inviter
+
+    return results
+
+
+@transaction.atomic
+def approve_verified_nft_order(order_id):
+
+    order = (
+        NFTOrder.objects
+        .select_for_update()
+        .select_related("user")
+        .get(pk=order_id)
+    )
+
+    if order.status == NFTOrder.STATUS_COMPLETED:
+        return order,False
+
+    if order.status != NFTOrder.STATUS_PENDING:
+        raise ValueError(
+            "Only pending NFT orders may be approved"
+        )
+
+    tx_hash = (order.payment_tx_hash or "").strip()
+    paid_ton = order.verified_ton_paid
+
+
+    if not tx_hash or paid_ton is None or paid_ton <= 0:
+        raise ValueError(
+            "Payment hash and verified TON amount are required"
+        )
+
+    if Decimal(str(paid_ton)) < order.ton_due:
+        raise ValueError(
+            "Verified payment is lower than NFT price"
+        )
+
+    if Purchase.objects.filter(
+        ton_tx_hash = tx_hash
+    ).exists():
+        raise ValueError(
+            "Transaction already used for a Stake purchase"
+        )
+
+    if NFTOrder.objects.exclude(
+        pk=order.pk
+    ).filter(
+        payment_tx_hash = tx_hash
+    ).exists():
+        raise ValueError(
+            "Transaction already used for another NFT"
+        )
+
+    sold_qty = (
+        NFTOrder.objects.filter(
+            product_id = order.product_id,
+            status = NFTOrder.STATUS_COMPLETED,
+        )
+        .aggregate(total=Sum("quantity"))["total"]
+        or 0
+    )
+
+    if 44 + sold_qty + order.quantity > 200:
+        raise ValueError("NFT supply exhausted")
+
+    increase_reward_cap(order.user,paid_ton)
+
+    credit_capped_referral_bonuses(
+        buyer=order.user,
+        purchase_output=order.usd_total,
+        purchase_ton=paid_ton,
+        invoice_no=str(order.id),
+        tx_hash=tx_hash,
+        asset="USDT",
+    )
+
+
+    update_user_investment(order.user,paid_ton)
+
+    order.status = NFTOrder.STATUS_COMPLETED
+
+    order.approved_at = timezone.now()
+
+    order.save(
+        update_fields=["status","approved_at"]
+    )
+
+    return order,True

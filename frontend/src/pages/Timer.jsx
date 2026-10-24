@@ -21,7 +21,10 @@ import {
   buildReferralApiParams,
 } from "../utils/referral";
 import { api } from "../api";
+import { showAd } from "../utils/ads";
 import axios from "axios";
+import LanguageSelector from "../components/LanguageSelector";
+import { useTranslation } from "react-i18next";
 
 function getTelegramWebApp() {
   try {
@@ -32,9 +35,6 @@ function getTelegramWebApp() {
   }
 }
 
-/* =========================================================
-   HOURGLASS COMPONENT
-========================================================= */
 
 function CountdownHourglass({
   remaining,
@@ -337,11 +337,11 @@ function CountdownHourglass({
   );
 }
 
-/* =========================================================
-   TIMER PAGE - نسخه نهایی با رفع حلقه بی‌نهایت
-========================================================= */
+
 
 export default function TimerPage() {
+
+  const { t } = useTranslation();
   const navigate = useNavigate();
   // =========================================================
   // STATE
@@ -355,13 +355,18 @@ export default function TimerPage() {
   const [eplWallet, setEplWallet] = useState(null);
   const [eplLoading, setEplLoading] = useState(false);
   const [message, setMessage] = useState("");
+  const [claiming,setClaiming] = useState(false);
+  const claimingRef = useRef(false);
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteMessage, setInviteMessage] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [welcomeOpen,setWelcomeOpen] = useState(false);
   const [totalReferrals, setTotalReferrals] = useState(0);
   const [referralsLoaded, setReferralsLoaded] = useState(false);
+  const [welcomeStats,setWelcomeStats] = useState(null);
   const welcomeShownRef = useRef(false);
+  const [shoppingOpen,setShoppingOpen] = useState(false);
+  const [shoppingPage,setShoppingPage] = useState(null);
 
   // =========================================================
   // REFs
@@ -633,15 +638,18 @@ export default function TimerPage() {
       return;
     }
 
-    const canClaim = remaining === 0 || remaining === null;
+    const canClaim = remaining === 0;
     if (!canClaim) {
       setMessage("⚠️ Please wait for the timer to finish.");
       return;
     }
 
-    try {
-      setMessage("⏳ Claiming reward...");
+    if (claimingRef.current) return;
+    claimingRef.current = true;
+    setClaiming(true);
 
+    try{
+      setMessage("⏳ Claiming reward...");
       const headers = {
         "X-Telegram-Id": String(telegramId),
         "X-Telegram": "true",
@@ -668,6 +676,13 @@ export default function TimerPage() {
         setTotalRewards(data.total_rewards ?? "0");
         setReferralBonus(data.referral_points ?? data.referral_bonus ?? referralBonus);
         setRewardCount(data.rewards_count ?? 0);
+        setEplWallet((prev) => ({
+          ...(prev || {}),
+          epl_balance: data.epl_balance ?? prev?.epl_balance ?? "0",
+          hourly_reward_balance: data.hourly_reward_balance ?? data.total_rewards ?? prev?.hourly_reward_balance ?? "0",
+          referral_bonus: data.referral_bonus ?? data.referral_points ?? prev?.referral_bonus ?? "0",
+          hourly_claims: data.rewards_count ?? prev?.hourly_claims ?? 0,
+        }));
         setMessage(`🎉 ${data.message || "Reward claimed!"}`);
 
         const cooldown = data.cooldown_seconds ?? cooldownSeconds ?? 3600;
@@ -675,6 +690,7 @@ export default function TimerPage() {
         remainingRef.current = cooldown;
         setRemaining(cooldown);
         dataLoadedRef.current = true;
+        showAd();
         return;
       }
 
@@ -692,6 +708,9 @@ export default function TimerPage() {
     } catch (error) {
       console.error("[Timer] claimReward ERROR:", error);
       setMessage(`❌ ${error?.response?.data?.error || error?.response?.data?.message || "Error claiming reward."}`);
+    } finally {
+      claimingRef.current = false;
+      setClaiming(false);
     }
   };
 
@@ -705,6 +724,10 @@ export default function TimerPage() {
   const topSandHeight = 90 * remainingRatio;
   const bottomSandHeight = 90 * elapsedRatio;
   const progress = Math.round(elapsedRatio * 100);
+  const ringRadius = 122;
+  const ringCircumference = 2 * Math.PI * ringRadius;
+  const ringProgress = remaining === null ? 0 : Math.min(1,Math.max(0,1 - remaining / rewardCycleSeconds));
+  const ringOffset = ringCircumference * (1 - ringProgress);
 
   const hours = remaining == null ? "--" : String(Math.floor(remaining / 3600)).padStart(2, "0");
   const minutes = remaining == null ? "--" : String(Math.floor((remaining % 3600) / 60)).padStart(2, "0");
@@ -845,6 +868,61 @@ export default function TimerPage() {
     }
     welcomeShownRef.current = true;
 
+    const snapshotKey = `timer_snapshot_${telegramId}`;
+    const seesionKey = `timer_welcome_session_${telegramId}`
+
+    if (sessionStorage.getItem(seesionKey) === "true"){
+      return;
+    }
+    
+    const currentStats = {
+      referrals: Number(totalReferrals || 0),
+      referralRewards: Number(eplWallet.referralBonus || 0),
+      hourlyRewards: Number(eplWallet.hourly_reward_balance || 0),
+      claims: Number(eplWallet.hourly_claims || 0),
+    };
+
+    let previousStats = null;
+
+    try {
+      const saved = localStorage.getItem(snapshotKey);
+      previousStats = saved ? JSON.parse(saved) : null;
+    }catch (error) {
+      console.error("Snapshot error:", error);
+    }
+
+    const newStats = {
+      referrals: Math.max(
+        0,
+        currentStats.referrals - Number(previousStats?.referrals ?? currentStats.referrals)
+      ),
+      
+      referralRewards: Math.max(
+        0,
+        currentStats.referralRewards - Number(previousStats?.referralRewards ?? currentStats.referralRewards)
+      ),
+      hourlyRewards:Math.max(
+        0,
+        currentStats.hourlyRewards - Number(previousStats?.hourlyRewards ?? currentStats.hourlyRewards)
+      ),
+
+      claims:Math.max(
+        0,
+        currentStats.claims - Number(previousStats?.claims ?? currentStats.claims)
+      ),
+    };
+
+    localStorage.setItem(
+      snapshotKey,
+      JSON.stringify(currentStats)
+    );
+
+    sessionStorage.setItem(seesionKey,"true");
+
+    setWelcomeStats(newStats);
+
+
+
     const timer = window.setTimeout(() => {
       setWelcomeOpen(true);
     }, 500);
@@ -855,6 +933,7 @@ export default function TimerPage() {
     telegramId,
     eplWallet,
     referralsLoaded,
+    totalReferrals,
   ]);
 
   // =========================================================
@@ -868,6 +947,20 @@ export default function TimerPage() {
   // =========================================================
   // UI
   // =========================================================
+
+  
+    // Demo referral levels
+    const unlockedLevels = 3;
+
+    const referralLevels = Array.from(
+      { length: 8 },
+      (_, i) => ({
+        level: i + 1,
+        reward: i === 0 ? 1000 : 500,
+        unlocked: i < unlockedLevels,
+      })
+    );
+
   return (
     <div className="boost-page">
       {welcomeOpen && (
@@ -930,84 +1023,115 @@ export default function TimerPage() {
               {telegramDisplayName}
             </h2>
             <p className="welcome-description">
-              Your AI POLIFY journey is growing!
-              Here's what you've achieved so far.
+              Here's what's new since your last visit!.
             </p>
+            
             <div className="welcome-stats-grid">
-              <div className="welcome-stat-card">
-                <div className="welcome-stat-icon">
-                  👥
-                </div>
-                <div className="welcome-stat-value">
-                  {Number(totalReferrals || 0).toLocaleString()}
-                </div>
-                <div className="welcome-stat-label">
-                  Total Referrals
-                </div>
-            </div>
-            <div className="welcome-stat-card">
-              <div className="welcome-stat-icon">
-                🎁
-              </div>
-              <div className="welcome-stat-value">
-                {Number(rewardCount || 0).toLocaleString()}
-              </div>
-              <div className="welcome-stat-label">
-                Rewards Claimed
-              </div>
-            </div>
-            <div className="welcome-stat-card">
-              <div className="welcome-stat-icon">
-                💎
-              </div>
-              <div className="welcome-stat-value">
-                {Number(totalRewards || 0).toLocaleString()}
 
-              </div>
-              <div className="welcome-stat-label">
-                Total Rewards
-              </div>
-            </div>
-            <div className="welcome-stat-card">
-              <div className="welcome-stat-icon">
-                 🚀
-              </div>
-              <div className="welcome-stat-va{totalReferrals.toLocaleString}ue">
-                {Number(
-                  eplReferralBalance || 0
-                ).toLocaleString()}
-              </div>
-              <div className="welcome-stat-label">
-                Referral Rewards
-              </div>
-            </div>
-            <div className="welcome-achievement">
-              <span>🏆</span>
-              <div>
-                <strong>
-                Keep growing your network!
-                </strong>
-                <span>
-                  Invite more friends and unlock more rewards.
-                </span>
-              </div>
-            </div>
-            <button
-            type="button"
-            className="welcome-continue-btn"
-            onClick={() => 
-              setWelcomeOpen(false)
-            }
-            >
-              Continue Mining
-            </button>
+              {welcomeStats?.referrals > 0 && (
+                <div className="welcome-stat-card">
+                  <div className="welcome-stat-icon">👥</div>
 
+                  <div className="welcome-stat-value">
+                    +{welcomeStats.referrals.toLocaleString()}
+                  </div>
 
-            </div><br /><br /><br /><br />
+                  <div className="welcome-stat-label">
+                    New Referrals
+                  </div>
+                </div>
+              )}
+
+              {welcomeStats?.referralRewards > 0 && (
+                <div className="welcome-stat-card">
+                  <div className="welcome-stat-icon">🚀</div>
+
+                  <div className="welcome-stat-value">
+                    +{welcomeStats.referralRewards.toLocaleString()}
+                  </div>
+
+                  <div className="welcome-stat-label">
+                    New Referral EPL
+                  </div>
+                </div>
+              )}
+
+              {welcomeStats?.hourlyRewards > 0 && (
+                <div className="welcome-stat-card">
+                  <div className="welcome-stat-icon">💎</div>
+
+                  <div className="welcome-stat-value">
+                    +{welcomeStats.hourlyRewards.toLocaleString()}
+                  </div>
+
+                  <div className="welcome-stat-label">
+                    New Hourly EPL
+                  </div>
+                </div>
+              )}
+
+              {welcomeStats?.claims > 0 && (
+                <div className="welcome-stat-card">
+                  <div className="welcome-stat-icon">🎁</div>
+
+                  <div className="welcome-stat-value">
+                    +{welcomeStats.claims.toLocaleString()}
+                  </div>
+
+                  <div className="welcome-stat-label">
+                    New Rewards Claimed
+                  </div>
+                </div>
+              )}
+
+              {welcomeStats &&
+                Object.values(welcomeStats).every(
+                  value => value === 0
+                ) && (
+                  <div className="welcome-stat-card">
+                    <div className="welcome-stat-icon">✨</div>
+
+                    <div className="welcome-stat-label">
+                      No new activity since your last visit.
+                    </div>
+                  </div>
+                )}
+
+            </div>
+
+            <br /><br /><br /><br />
           </div>
 
         </div>
       )}
+      
+{shoppingPage && (
+  <div className="shopping-coming-overlay">
+    <div className="shopping-coming-card">
+      <button
+        type="button"
+        className="shopping-back-button"
+        onClick={() => setShoppingPage(null)}
+      >
+        ← Back to Timer
+      </button>
+
+      <div className="shopping-coming-icon">
+        {shoppingPage === "NFT" ? "🖼️" : "🌐"}
+      </div>
+
+      <h1>{shoppingPage}</h1>
+      <h2>Coming Soon</h2>
+
+      <p>
+        Something exciting is on the way.
+        Stay tuned!
+      </p>
+    </div>
+  </div>
+)}
+
+
       <main className="mining-shell">
         <header className="topbar">
           <div className="hamburger-menu" ref={menuRef}>
@@ -1017,6 +1141,7 @@ export default function TimerPage() {
               onClick={() => setMenuOpen((open) => !open)}
               aria-label="Open menu"
               aria-expanded={menuOpen}
+              data-tour="hamburger-menu"
             >
               <span />
               <span />
@@ -1112,10 +1237,52 @@ export default function TimerPage() {
                           </div>
                       )}
                     </div>
-                    <button type="button" className="drawer-main-btn drawer-main-btn-disabled" disabled>
-                      <span className="drawer-btn-text">🛍️ Shopping</span>
-                      <span className="drawer-coming-soon">Coming Soon</span>
-                    </button>
+                    
+          {/* SHOPPING MENU */}
+          <div className="timer-shopping-menu">
+            <button
+              type="button"
+              className="drawer-main-btn drawer-shop-btn"
+              onClick={() => setShoppingOpen((prev) => !prev)}
+              aria-expanded={shoppingOpen}
+            >
+              <span className="drawer-shop-text">
+                <span className="drawer-btn-text">
+                  🛍️ Shopping
+                </span>
+                <span className="drawer-shop-sub">
+                  NFT & Metaverse
+                </span>
+              </span>
+              <span>{shoppingOpen ? "▲" : "▼"}</span>
+            </button>
+
+            {shoppingOpen && (
+              <div className="timer-shopping-submenu">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setShoppingOpen(false);
+                    navigate("/shop");
+                  }}
+                >
+                   NFT
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShoppingPage("Metaverse");
+                    setMenuOpen(false);
+                  }}
+                >
+                   Metaverse
+                </button>
+              </div>
+            )}
+          </div>
+
                     <a
                       className="drawer-main-btn drawer-support-btn"
                       href="https://t.me/Ai_POLYFI"
@@ -1132,305 +1299,374 @@ export default function TimerPage() {
               </>
             )}
           </div>
-          <h1>AI POLIFY</h1>
-          <img src={Logo} alt="AI POLIFY Logo" className="brand-logo" />
+
+          <div className="brand-lockup">
+            <span className="brand-mark">
+              <img src={Logo} alt="AI POLIFY Logo" className="brand-logo" />
+            </span>
+            <h1>AI POLIFY</h1>
+          </div>
+
+          <LanguageSelector />
         </header>
 
-        <section className="miner-card" aria-label="EPL Miner">
-          <div className="miner-top-edge" />
-          <svg viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg" className="miner-svg">
-            <defs>
-              <filter id="centerBloom" x="-80%" y="-80%" width="260%" height="260%">
-                <feGaussianBlur stdDeviation="24" />
-              </filter>
-              <mask id="mask-blades">
-                <rect width="100%" height="100%" fill="white" />
-                <circle cx="200" cy="210" r="47" fill="black" />
-              </mask>
-            </defs>
-            <g filter="url(#centerBloom)">
-              <circle cx="200" cy="210" r="115" fill="#039bea" opacity="0.14" />
-              <circle cx="200" cy="210" r="72" fill="#00d9ff" opacity="0.18" />
-            </g>
-            <image className="fan-blades" href={Blade} x="72" y="82" width="256" height="256" mask="url(#mask-blades)" />
-            <circle cx="200" cy="210" r="62" fill="#06142d" stroke="#0ab9ff" strokeWidth="3" />
-            <circle cx="200" cy="210" r="55" fill="none" stroke="rgba(72,207,255,.18)" strokeWidth="2" />
-            <text x="200" y="198" textAnchor="middle" fill="white" fontSize="18" fontWeight="800">MINER</text>
-            <path d="M177 211 H189 M189 211 Q192 202 195 211 T201 211 Q204 202 207 211 T213 211 H224" stroke="#ffffff" strokeWidth="2.6" fill="none" />
-            <text x="200" y="232" textAnchor="middle" fill="white" fontSize="22" fontWeight="700">EPL</text>
-          </svg>
-          <span className="corner-dot dot-a" />
-          <span className="corner-dot dot-b" />
-          <span className="corner-dot dot-c" />
-          <span className="corner-dot dot-d" />
-          <span className="miner-foot foot-left" />
-          <span className="miner-foot foot-right" />
-        </section>
-
-        <section className="countdown-zone">
-          <CountdownHourglass remaining={remaining} topSandHeight={topSandHeight} bottomSandHeight={bottomSandHeight} />
-          <p className="mining-caption">{remaining === 0 ? "Mining completed!" : "Mining in progress..."}</p>
-          <div className="digital-countdown" aria-label={`${hours}:${minutes}:${seconds}`}>
-            <div className="time-part">
-              <strong>{hours}</strong>
-              <span>HOURS</span>
-            </div>
-            <b className="colon">:</b>
-            <div className="time-part">
-              <strong>{minutes}</strong>
-              <span>MINUTES</span>
-            </div>
-            <b className="colon">:</b>
-            <div className="time-part">
-              <strong>{seconds}</strong>
-              <span>SECONDS</span>
-            </div>
+        <section className="panel">
+          <div className="reactor">
+            <svg viewBox="0 0 260 260" width="260" height="260">
+              <circle cx="130" cy="130" r="122" fill="none" stroke="#12284d" strokeWidth="3"/>
+              <circle id="ring" cx="130" cy="130" r={ringRadius} fill="none" stroke="#38c6ff" strokeWidth="4" strokeLinecap="round" strokeDasharray={ringCircumference} strokeDashoffset={ringOffset} transform="rotate(-90 130 130)" style={{transition:"stroke-dashoffset 1s linear",}}/>
+            </svg>
+            <div className="core"><b id="rate">100</b><span>EPL / HOUR</span></div>
+            <i className="dot" style={{left:"30px",top:"32px"}}></i>
+            <i className="dot" style={{right:"30px",top:"50px"}}></i>
+            <i className="dot" style={{left:"44px",bottom:"26px"}}></i>
           </div>
-        </section>
-
-        <section className="reward-card glass-card">
-          <div className="reward-heading">
-            <span>Estimated Hourly Reward</span>
-            <strong>100.0000 EPL</strong>
+          <div class="timer">
+            <div><b id="h">{hours}</b><small>HOURS</small></div><em>:</em>
+            <div><b id="m">{minutes}</b><small>MINUTES</small></div><em>:</em>
+            <div><b id="s">{seconds}</b><small>SECONDS</small></div>
           </div>
-          <div className="progress-track" aria-label={`Mining progress ${progress}%`}>
-            <div className="progress-fill" style={{ width: `${progress}%` }}>
-              <span>{progress}%</span>
-            </div>
-          </div>
-          <div className="reward-stats">
-            <div className="stat-item">
-              <span className="stat-icon">▣</span>
-              <span>Hourly Claims: <strong>{rewardCount}</strong></span>
-            </div>
-            <div className="stat-divider" />
-            <div className="stat-item">
-              <span className="stat-icon">♟</span>
-              <span>Referral Bonus: <strong>{Number(referralBonus).toFixed(4)} EPL</strong></span>
-            </div>
-          </div>
-        </section>
-
-        <section className="status-card glass-card">
-          <div className="coin-icon">
-            <span />
-            <span />
-            <span />
-          </div>
-          <div>
-            <h2>{remaining === 0 ? "Your reward is ready!" : "Mining will complete soon!"}</h2>
-            <p>{remaining === 0 ? "Claim your hourly reward now." : "Stay online to claim your reward."}</p>
-          </div>
-        </section>
-
-        {telegramId && (
+         
+        {remaining === 0 ? (
           <button
-            className={`claim-btn ${!canClaim ? "claim-loading" : ""}`}
-            onClick={canClaim ? claimReward : undefined}
-            disabled={!canClaim}
+          type="button"
+          className="next next-ready"
+          id="next"
+          data-tour = "reward-ready"
+          onClick={claimReward}
+          disabled={claiming}
           >
-            {canClaim ? "Claim 100 EPL" : "Mining..."}
+            {claiming ? "Claiming..." : "Reward ready! Tap to claim"}
           </button>
-        )}
+        ):(
+          <div className="next" id="next" data-tour="reward-ready">
+            {`NEXT reward in ${hours}:${minutes}:${seconds}`}
+          </div>
+        )  
+        }
 
-        {/* =====================================================
-            QUICK ACTIONS
-        ===================================================== */}
 
-        <section className="quick-actions-box">
-          {/* INVITE FRIENDS */}
-          <button 
-           type="button"
-           className="quick-action-item"
-           onClick={shareReferralOnTelegram}
-           disabled={inviteLoading}
-          >
-            <div className="quick-action-left">
-              <div className="quick-action-icon quick-action-icon-green">
-                👥
-              </div>
-              <div className="quick-action-text">
-                <strong>
-                  Invite Friends
-                </strong>
-                <span>
-                  Earn more with friends
-                </span>
-              </div>
-            </div>
-            <span className="quick-action-arrow">
-              ›
-            </span>
-          </button>
-
-           {/* STAKE EPL */}
-           <button
-           type="button"
-           className="quick-action-item"
-           onClick={() => navigate("/stake")}
-           >
-            <div className="quick-action-left">
-              <div className="quick-action-icon quick-action-icon-purple">
-                🪙
-              </div>
-              <div className="quick-action-text">
-                <strong>
-                  Stake Ecg and usdt
-                </strong>
-                <span>
-                  Stake and earn more
-                </span>
-
-              </div>
-            </div>
-            <span className="quick-action-arrow">
-               ›
-            </span>
-           </button>
-
-           <button
-           type="button"
-           className="quick-action-item"
-           onClick={()=>
-            setMessage("🎁 Daily Bonus coming soon.")
-           }
-           >
-            <div className="quick-action-left">
-              <div className="quick-action-icon quick-action-icon-gold">
-                🎁
-              </div>
-              <div className="quick-action-text">
-                <strong>
-                  Daily Bouns
-                </strong>
-                <span>
-                  Claim your daily reward
-                </span>
-              </div>
-
-            </div>
-            <span className="quick-action-arrow">
-              ›
-            </span>
-
-           </button>
         </section>
 
+       <section className="balance-card-3d">
+        <div className="balance-top">
+          <div className="label-row-3d">
+            <span>
+              Total Balance
+            </span>
+            <span className="info-icon-3d">
+              i
+            </span>
+          </div>
 
-        <section className="glass-card" style={{ marginTop: 18, padding: 16, borderRadius: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 14, color: "#00d9ff", letterSpacing: "0.08em" }}>👥 REFERRAL MINING</div>
-          {[
-            ["Username", "1000 EPL"],
-            ["Username", "500 EPL"],
-            ["Username", "500 EPL"],
-            ["Username", "500 EPL"],
-            ["Username", "500 EPL"],
-          ].map(([name, reward], index) => (
-            <div key={index} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 8px", borderBottom: index !== 4 ? "1px solid rgba(255,255,255,0.08)" : "none" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span style={{ width: 24, height: 24, borderRadius: "50%", border: "1px solid rgba(0,217,255,.5)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "#00d9ff" }}>{index + 1}</span>
-                <span style={{ fontSize: 13, opacity: 0.8 }}>🏆 Level {index + 1}</span>
+          <div className="balance-amount-3d">
+
+            <span
+            id="balanceAmount"
+            className="amount-number"
+            >
+
+              {eplBalance.toFixed(4)}
+            </span>
+
+            <span className="currency-prefix">
+              EPL
+            </span>
+
+          </div>
+          
+         
+
+        </div>
+
+        <div class="coin-top-right">
+
+        <div class="coin-visual-3d">
+
+          <div class="coin-glow-orbit"></div>
+
+          <div class="coin-orbit-ring"></div>
+
+          <div class="coin-orbit-ring ring-2"></div>
+
+          <div class="coin-pedestal"></div>
+
+          <div class="coin-pedestal-glow"></div>
+
+
+          <div class="coin-3d-wrapper">
+
+            <div class="coin-3d-face">
+
+              {/* <span class="coin-text">
+                EPL
+              </span> */}
+
+            </div>
+
+            <div class="coin-3d-edge"></div>
+
+          </div>
+
+
+          <div class="coin-reflection"></div>
+
+        </div>
+
+      </div>
+
+       <div className="action-buttons-3d">
+
+          
+
+
+          <button
+            data-tour="withdraw"
+            className="btn-withdraw-3d"
+            type="button"
+            disabled
+          >
+
+            <span className="withdraw-icon">
+              ↑
+            </span>
+
+            <span className="withdraw-text">
+              Withdraw
+            </span>
+
+            <span className="soon-badge">
+              Soon
+            </span>
+
+          </button>
+
+        </div>
+
+        
+        
+
+
+       </section>
+
+
+       <section class="stats-row">
+
+        <div class="stat-card blue-theme" data-tour="hourly-reward">
+
+          <div class="stat-header">
+
+            <div class="icon-circle">
+
+               <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#00d9ff"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+
+                <circle
+                  cx="12"
+                  cy="12"
+                  r="10"
+                ></circle>
+
+                 <polyline
+                  points="12 6 12 12 16 14"
+                ></polyline>
+
+              </svg>
+            </div>
+
+            <span>
+              Hourly Reward
+            </span>
+
+          </div>
+
+          <div class="stat-value">
+
+            <span id="hourlyReward">
+              {rewardCount}
+            </span>
+
+           
+
+          </div>
+
+            
+
+
+          <div class="stat-footer">
+
+            <span>
+              Per hour
+            </span>
+
+            <div class="mini-chart"></div>
+
+          </div>
+        </div>
+
+        <div class="stat-card purple-theme" data-tour="referral-bouns">
+
+          <div class="stat-header">
+
+            <div class="icon-circle">
+
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#a855f7"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+
+                <path
+                  d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"
+                ></path>
+
+                <circle
+                  cx="9"
+                  cy="7"
+                  r="4"
+                ></circle>
+
+                <path
+                  d="M23 21v-2a4 4 0 0 0-3-3.87"
+                ></path>
+
+                <path
+                  d="M16 3.13a4 4 0 0 1 0 7.75"
+                ></path>
+
+              </svg>
+
+            </div>
+
+            <span>
+              Referral Bonus
+            </span>
+
+          </div>
+
+
+          <div class="stat-value">
+
+            <span id="referralBonusStat">
+              {Number(referralBonus).toFixed(4)}
+            </span>
+
+            <small>
+              EPL
+            </small>
+
+          </div>
+
+
+          <div
+            id="referralBonusUsd"
+            class="stat-sub"
+          >
+            = $0.00
+          </div>
+
+
+          <div class="stat-footer">
+
+            <span>
+              Total Earned
+            </span>
+
+            <span
+              id="referralBonusFooter"
+              class="highlight"
+            >
+              {Number(referralBonus).toFixed(4)}
+            </span>
+
+          </div>
+
+        </div>
+
+       </section>
+
+       
+      {/* 8-Level Referral Rewards */}
+      {/* <section className="referral-glass">
+        <div className="referral-glass-title">
+          <span>💎 Referral Rewards</span>
+          <small>{unlockedLevels}/8 Levels</small>
+        </div>
+
+        <div className="referral-level-grid">
+          {referralLevels.map((item) => (
+            <div
+              key={item.level}
+              className={`referral-level ${
+                item.unlocked ? "unlocked" : "locked"
+              }`}
+            >
+              <div className="referral-level-circle">
+                {item.unlocked ? "✓" : "✕"}
               </div>
-              <span style={{ display: "flex", alignItems: "center", gap: "6px", color: "#00d9ff", fontWeight: 900 }}>
-                +{reward.replace(" EPL", "")}
-                <img src={eplLogo} alt="EPL" style={{ width: "18px", height: "18px", objectFit: "contain" }} />
-              </span>
+
+              <span>Level {item.level}</span>
+              <strong>{item.reward.toLocaleString()} EPL</strong>
             </div>
           ))}
+        </div>
+
+        <div className="referral-glass-footer">
+          <span>Total potential rewards</span>
+          <strong>4,500 EPL</strong>
+        </div>
+      </section> */}
+
+        <section className="invite-banner">
+
+          <div className="gift-icon">
+          🎁
+          </div>
+
+          <div className="invite-text">
+
+          <h4>
+            Invite Friends
+          </h4>
+
+          <p>
+            Invite more friends and earn more EPL
+          </p>
+
+          </div>
           <button
-            type="button"
-            onClick={shareReferralOnTelegram}
-            disabled={inviteLoading}
-            style={{ width: "100%", marginTop: 14, minHeight: 48, border: "1px solid rgba(0,217,255,.55)", borderRadius: 14, background: "linear-gradient(135deg, rgba(0,217,255,.22), rgba(30,104,255,.22))", color: "#ffffff", fontSize: 14, fontWeight: 900, letterSpacing: "0.03em", cursor: inviteLoading ? "wait" : "pointer", opacity: inviteLoading ? 0.7 : 1, boxShadow: "0 10px 30px rgba(0,145,255,.15)" }}
+          className="btn-invite"
+          type="button"
+          disabled
           >
-            {inviteLoading ? "Opening Telegram..." : "Invite Me"}
+            ✈️ Invite Now
           </button>
-          {inviteMessage && (
-            <div style={{ marginTop: 9, textAlign: "center", fontSize: 12, color: inviteMessage.startsWith("Referral link") ? "#66f5c7" : "#ff9a9a" }}>
-              {inviteMessage}
-            </div>
-          )}
         </section>
 
-        {telegramId && (
-          <section className="glass-card" style={{ marginTop: 18, padding: 18, borderRadius: 20 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 14 }}>
-              <div>
-                <div style={{ fontSize: 12, opacity: 0.68, letterSpacing: "0.12em", fontWeight: 800 }}>EPL ACCOUNT</div>
-                <div style={{ marginTop: 5, fontSize: 26, fontWeight: 900 }}>{eplBalance.toFixed(4)} EPL</div>
-              </div>
-              <span style={{ padding: "7px 10px", borderRadius: 999, fontSize: 11, fontWeight: 800, background: "rgba(35, 211, 238, 0.12)", border: "1px solid rgba(35, 211, 238, 0.28)" }}>
-                {eplLoading ? "Updating..." : "EPL"}
-              </span>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(135px, 1fr))", gap: 10 }}>
-              {[
-                ["Hourly Reward Balance", `${eplHourlyBalance.toFixed(4)} EPL`],
-                ["Referral Bonus Balance", `${eplReferralBalance.toFixed(4)} EPL`],
-                ["Hourly Claims", String(eplHourlyClaims)],
-              ].map(([label, value]) => (
-                <div key={label} style={{ padding: 12, borderRadius: 14, background: "rgba(255,255,255,0.035)", border: "1px solid rgba(255,255,255,0.08)" }}>
-                  <div style={{ fontSize: 11, opacity: 0.62, marginBottom: 7 }}>{label}</div>
-                  <strong style={{ fontSize: 14, lineHeight: 1.35 }}>{value}</strong>
-                </div>
-              ))}
-            </div>
-            <button type="button" disabled style={{ width: "100%", marginTop: 15, padding: "13px 14px", borderRadius: 14, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.05)", color: "inherit", cursor: "not-allowed", opacity: 0.72 }}>
-              <span style={{ display: "block", fontWeight: 900, fontSize: 14 }}>Withdraw EPL</span>
-              <span style={{ display: "block", marginTop: 3, fontSize: 11, opacity: 0.7 }}>Coming soon to withdraw</span>
-            </button>
-          </section>
-        )}
+      
+
+
+        
 
         {message && <p className="server-message">{message}</p>}
       </main>
 
-      <nav className="bottom-nav" aria-label="Main navigation">
-        <button className="nav-item active">
-          <span className="nav-icon">⚒</span>
-          <span>Mine</span>
-        </button>
-        <button className="nav-item">
-          <span className="nav-icon">◉</span>
-          <span>Stake</span>
-        </button>
-        <button className="nav-item">
-          <span className="nav-icon">🤝</span>
-          <span>Friends</span>
-        </button>
-        <button className="nav-item">
-          <span className="nav-icon">♙</span>
-          <span>About Us</span>
-        </button>
-        <button className="nav-item">
-          <span className="nav-icon">▢</span>
-          <span>Wallets</span>
-        </button>
-
-        <section className="glass-card referral-ranking">
-          <div className="referral-title">Referral Ranking</div>
-          {[
-            { rank: "Level 1", username: "", reward: "1000" },
-            { rank: "Level 2", username: "", reward: "500" },
-            { rank: "Level 3", username: "", reward: "300" },
-            { rank: "Level 4", username: "", reward: "200" },
-            { rank: "Level 5", username: "", reward: "100" },
-          ].map((user) => (
-            <div className="referral-item" key={user.rank}>
-              <div className="rank-number">{user.rank}</div>
-              <div className="person-icon">🏆</div>
-              <div className="username">{user.username}</div>
-              <div className="arrow">→</div>
-              <div className="epl-value">
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                  <img src="/epl-logo.png" alt="EPL" style={{ width: 18, height: 18, borderRadius: "50%" }} />
-                  {user.reward}
-                </span>
-              </div>
-            </div>
-          ))}
-        </section>
-      </nav>
+     
     </div>
   );
 }

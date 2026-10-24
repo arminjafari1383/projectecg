@@ -2,11 +2,13 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 
 import App from "./App.jsx";
+import "./i18n/i18n.js";
 import { TonConnectUIProvider } from "@tonconnect/ui-react";
 import { WalletProvider } from "./context/WalletContext";
 import APP_CONFIG from "./config/appConfig";
 
 import "./index.css";
+import "./styles/unified-theme.css";
 
 
 // جلوگیری از اجرای دوباره React Root

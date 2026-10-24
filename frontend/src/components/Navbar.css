@@ -1,110 +1,230 @@
+/* =========================================================
+   Bottom navigation — neon glass cards (crypto style)
+   Each item gets its own accent via --accent / --soft (set in JSX)
+   ========================================================= */
+
 .navbar {
   position: fixed;
   right: 0;
   bottom: 0;
   left: 0;
-  min-height: 92px;
-  padding: 10px 8px calc(16px + env(safe-area-inset-bottom));
-  border-top: 1px solid rgba(47, 92, 255, 0.35);
-  background: rgba(10, 15, 43, 0.96);
-  box-shadow: 0 -4px 30px rgba(0, 225, 255, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  min-height: 86px;
+  padding: 9px 10px calc(9px + env(safe-area-inset-bottom));
+  border-top: 1px solid rgba(56, 189, 248, 0.14);
+  background:
+    linear-gradient(180deg, rgba(8, 22, 48, 0.72) 0%, rgba(3, 10, 24, 0.95) 100%);
+  box-shadow:
+    0 -14px 44px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
   z-index: 9999;
   display: flex;
-  align-items: center;
-  justify-content: space-around;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 8px;
 }
 
-.nav-item {
-  min-width: 62px;
-  min-height: 68px;
-  padding: 5px 12px;
-  border-radius: 14px;
+/* multicolour neon hairline on the top edge (matches the five accents) */
+.navbar::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(59, 130, 246, 0.75) 18%,
+    rgba(34, 211, 238, 0.75) 34%,
+    rgba(168, 85, 247, 0.75) 50%,
+    rgba(245, 158, 11, 0.75) 66%,
+    rgba(217, 70, 239, 0.75) 82%,
+    transparent 100%
+  );
+  box-shadow: 0 0 14px rgba(120, 140, 255, 0.28);
+}
+
+.navbar .nav-item {
+  --accent: 56, 189, 248;
+  --soft: #7dd3fc;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 84px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
   position: relative;
-  color: #9fb3ff;
+  color: #7f93b8;
   text-decoration: none;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  -webkit-tap-highlight-color: transparent;
+  transform: none;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 4px;
+  gap: 5px;
 }
 
-.nav-item img {
-  width: 50px;
-  height: 50px;
-  object-fit: contain;
-  filter: drop-shadow(0 0 7px rgba(0, 225, 255, 0.18));
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+/* Timer.css adds a round glow to .nav-item.active — not wanted here */
+.navbar .nav-item::before,
+.navbar .nav-item.active::before,
+.navbar .nav-item.active::after {
+  content: none;
 }
 
-.nav-item span {
-  color: #9aa9d9;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.3px;
-  text-shadow: 0 0 8px rgba(0, 225, 255, 0.1);
-  transition: all 0.3s ease;
+/* ---- the glass card ---- */
+.navbar .nav-card {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 17px;
+  overflow: hidden;
+  border: 1.5px solid rgba(var(--accent), 0.42);
+  background: rgba(var(--accent), 0.10);
+  box-shadow:
+    0 0 12px rgba(var(--accent), 0.20),
+    inset 0 0 12px rgba(var(--accent), 0.16);
+  opacity: 0.78;
+  transition:
+    transform 0.28s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.25s ease,
+    border-color 0.25s ease,
+    box-shadow 0.28s ease;
 }
 
-.nav-item:hover {
-  transform: translateY(-2px);
+.navbar .nav-card img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  user-select: none;
+  -webkit-user-drag: none;
+  filter: brightness(0.92) saturate(0.95);
+  transition: filter 0.25s ease, transform 0.35s ease;
 }
 
-.nav-item:hover img {
-  transform: translateY(-3px) scale(1.06);
-  filter: drop-shadow(0 0 16px rgba(0, 225, 255, 0.4));
-}
-
-.nav-item:hover span,
-.nav-item.active span {
-  color: #00e1ff;
-  text-shadow: 0 0 16px rgba(0, 225, 255, 0.45);
-}
-
-.nav-item.active {
-  color: #00e1ff;
-  transform: translateY(-3px);
-}
-
-.nav-item.active img {
-  transform: scale(1.1);
-  filter: drop-shadow(0 0 20px rgba(47, 92, 255, 0.65));
-}
-
-.nav-item.active::after {
+/* glass gloss on top */
+.navbar .nav-card::after {
   content: "";
   position: absolute;
-  top: -3px;
-  left: 50%;
-  width: 28px;
-  height: 3px;
-  border-radius: 0 0 4px 4px;
-  background: linear-gradient(90deg, #3b82f6, #00e1ff);
-  box-shadow: 0 0 20px rgba(0, 225, 255, 0.4);
-  transform: translateX(-50%);
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.20) 0%, rgba(255, 255, 255, 0.04) 32%, transparent 55%);
 }
 
-.nav-item.disabled {
+/* arrow badge — only visible on the active tab */
+.navbar .nav-arrow {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  z-index: 2;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.2px solid rgba(255, 255, 255, 0.85);
+  background: rgba(2, 8, 20, 0.55);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.navbar .nav-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #7f93b8;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  line-height: 1.1;
+  text-shadow: none;
+  transition: color 0.25s ease;
+}
+
+@media (hover: hover) {
+  .navbar .nav-item:hover .nav-card {
+    opacity: 1;
+    border-color: rgba(var(--accent), 0.75);
+    transform: translateY(-2px);
+  }
+
+  .navbar .nav-item:hover .nav-card img {
+    filter: brightness(1.05) saturate(1.05);
+    transform: scale(1.05);
+  }
+
+  .navbar .nav-item:hover .nav-label {
+    color: var(--soft);
+  }
+}
+
+.navbar .nav-item:active .nav-card {
+  transform: scale(0.95);
+}
+
+.navbar .nav-item:focus-visible {
+  outline: none;
+}
+
+.navbar .nav-item:focus-visible .nav-card {
+  outline: 2px solid rgba(var(--accent), 0.9);
+  outline-offset: 2px;
+}
+
+/* ---- active tab ---- */
+.navbar .nav-item.active {
+  transform: none;
+}
+
+.navbar .nav-item.active .nav-card {
+  opacity: 1;
+  transform: translateY(-4px);
+  border-color: rgba(var(--accent), 0.95);
+  box-shadow:
+    0 0 20px rgba(var(--accent), 0.55),
+    0 8px 22px rgba(var(--accent), 0.25),
+    inset 0 0 16px rgba(var(--accent), 0.28);
+}
+
+.navbar .nav-item.active .nav-card img {
+  filter: brightness(1.08) saturate(1.1);
+}
+
+.navbar .nav-item.active .nav-arrow {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.navbar .nav-item.active .nav-label {
+  color: var(--soft);
+  font-weight: 700;
+  text-shadow: 0 0 12px rgba(var(--accent), 0.6);
+}
+
+.navbar .nav-item.disabled {
   opacity: 0.38;
   cursor: not-allowed;
-  filter: grayscale(0.5);
 }
 
-.nav-item.disabled img {
+.navbar .nav-item.disabled .nav-card img {
   filter: grayscale(0.8) opacity(0.55);
-}
-
-.nav-item.disabled span {
-  color: #4a5578;
 }
 
 .navbar-toast {
   position: fixed;
   left: 50%;
-  bottom: 112px;
+  bottom: 104px;
   width: min(360px, calc(100vw - 28px));
   padding: 12px 14px;
   border: 1px solid rgba(125, 211, 252, 0.3);
@@ -130,74 +250,52 @@
   cursor: pointer;
 }
 
-@media (max-width: 768px) {
-  .navbar {
-    min-height: 84px;
-    padding: 8px 4px calc(13px + env(safe-area-inset-bottom));
-  }
-
-  .nav-item {
-    min-width: 48px;
-    min-height: 62px;
-    padding: 4px 7px;
-  }
-
-  .nav-item img {
-    width: 42px;
-    height: 42px;
-  }
-
-  .nav-item span {
-    font-size: 10px;
-  }
-}
-
 @media (max-width: 480px) {
   .navbar {
     min-height: 78px;
-    padding: 7px 2px calc(11px + env(safe-area-inset-bottom));
+    padding: 8px 8px calc(7px + env(safe-area-inset-bottom));
+    gap: 6px;
   }
 
-  .nav-item {
-    min-width: 42px;
-    min-height: 57px;
-    padding: 3px 4px;
-    gap: 3px;
+  .navbar .nav-item {
+    max-width: 72px;
+    gap: 4px;
   }
 
-  .nav-item img {
-    width: 37px;
-    height: 37px;
+  .navbar .nav-card {
+    border-radius: 14px;
   }
 
-  .nav-item span {
-    font-size: 9px;
-    font-weight: 650;
+  .navbar .nav-label {
+    font-size: 10px;
+    letter-spacing: 0.15px;
   }
 
-  .nav-item.active::after {
-    width: 20px;
-    height: 3px;
+  .navbar .nav-arrow {
+    width: 14px;
+    height: 14px;
+    right: 3px;
+    bottom: 3px;
+  }
+
+  .navbar .nav-arrow svg {
+    width: 8px;
+    height: 8px;
   }
 
   .navbar-toast {
-    bottom: 96px;
+    bottom: 92px;
   }
 }
 
 @media (max-width: 360px) {
-  .nav-item {
-    min-width: 38px;
-    padding-inline: 2px;
+  .navbar {
+    gap: 4px;
+    padding-inline: 5px;
   }
 
-  .nav-item img {
-    width: 34px;
-    height: 34px;
-  }
-
-  .nav-item span {
-    font-size: 8px;
+  .navbar .nav-label {
+    font-size: 9px;
   }
 }
 

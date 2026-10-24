@@ -20,6 +20,19 @@ import {
 } from "../utils/referral";
 
 import "./Referrals.css";
+const REFERRAL_PERCENTAGES = {
+  1: 10,
+  2: 5,
+  3: 4,
+  4: 3,
+  5: 3,
+  6: 2,
+  7: 2,
+  8: 1,
+};
+
+
+
 
 function getTelegramWebApp() {
   try {
@@ -476,10 +489,13 @@ export default function Referrals() {
   // ====================================================
 
   function renderLevelTable(level, data) {
+
+    const percentage = REFERRAL_PERCENTAGES[level] || 0;
+
     const levelProfitMessage =
-      level === 1
-        ? "Direct referral: 1000 EPL join bonus + 5% stake profit (ECG)."
-        : "Indirect referral: 500 EPL join bonus + 1% stake profit (ECG).";
+      `Level ${level}: ${percentage}% purchase commission. ` +
+      `Commission is available only after your first personal purchase, ` +
+      `up to 10x your personal purchases.`;
 
     if (!data) {
       return (
@@ -510,17 +526,7 @@ export default function Referrals() {
           {levelProfitMessage}
         </p>
 
-        {level === 1 && (
-          <div
-            style={{
-              marginBottom: "10px",
-              fontSize: "12px",
-              opacity: 0.8,
-            }}
-          >
-            ✅ Direct join bonus is 1000 EPL. Indirect Levels 2–5 receive 500 EPL per new downline. Purchase profit is shown separately in ECG and USDT. Referral rewards are tracked in EPL, ECG and USDT.
-          </div>
-        )}
+       
 
         <div className="table-wrapper">
           <table>
@@ -530,8 +536,8 @@ export default function Referrals() {
                 <th>User</th>
                 <th>Investment (TON)</th>
                 <th>Referral Bonus (EPL)</th>
-                <th>{level === 1 ? "5% Profit (ECG)" : "1% Profit (ECG)"}</th>
-                <th>{level === 1 ? "5% Profit (USDT)" : "1% Profit (USDT)"}</th>
+                <th>{percentage}% Profit (ECG)</th>
+                <th>{percentage}% Profit (USDT)</th>
               </tr>
             </thead>
 
@@ -716,16 +722,17 @@ export default function Referrals() {
           </div>
 
           <div className="levels-section">
-            <h3>🔺 Referral Tree (5 Levels)</h3>
+            <h3>🔺 Referral Tree (8 Levels)</h3>
 
             <div className="levels-grid">
-              {[1, 2, 3, 4, 5].map((level) => (
+              {[1, 2, 3, 4, 5,6,7,8].map((level) => (
                 <div key={level} className="level-card">
                   {renderLevelTable(level, levels?.[`level_${level}`])}
                 </div>
               ))}
             </div>
-          </div>
+            
+          </div><br /><br />
         </>
       ) : (
         <div className="loading-spinner">Loading referral data...</div>

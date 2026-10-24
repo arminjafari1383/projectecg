@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { useTonWallet, TonConnectButton, useTonConnectUI, useTonAddress } from "@tonconnect/ui-react";
 import { useLocation, useNavigate } from "react-router-dom";
+import ecgLogo from "../assets/ecg-logo.png";
+import usdtLogo from "../assets/usdt-logo.png"
+import { useTranslation } from "react-i18next";
 import { api } from "../api";
+import { beginCell } from "@ton/core";
+import { Buffer } from "buffer";
 import "./Wallet.css";
+import RewardCap from "./RewardCap";
 import {
   loadUserData as loadUserDataFromStorage,
   saveUserData as saveUserDataToStorage,
@@ -91,6 +97,7 @@ const CopyIcon = ({ size = 22, className = "" }) => (
 
 export default function Wallet() {
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const location = useLocation();
   const returnAfterConnectRef = useRef(false);
   const routeReturnTo = location.state?.returnTo || null;
@@ -100,10 +107,36 @@ export default function Wallet() {
   // this variable include open wallet list and disconnect wallet
   const [tonConnectUI] = useTonConnectUI();
   // get address wallet from wallet 
-  const address = useMemo(
-    () => tonWallet?.account?.address,
-    [tonWallet]
-  );
+  // const address = useMemo(
+  //   () => tonWallet?.account?.address,
+  //   [tonWallet]
+  // );
+
+
+  const LOCAL_MODE = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+  
+  
+  const LOCAL_WALLET_ADDRESS = "UQAnSyNFHfwJqSsmWefsaBvzIv3LLfsfP4qxf3DjEMVLsztU";
+
+  const address = useMemo(() => {
+    if (LOCAL_MODE) {
+      return LOCAL_WALLET_ADDRESS;
+    }
+
+    return tonWallet?.account?.address;
+  }, [tonWallet]);
+  // Only for local UI testing
+const isTonWalletConnected = Boolean(
+  LOCAL_MODE ||
+  (
+    tonWallet?.account?.address &&
+    tonConnectUI.connected
+  )
+);
+
+  
+
+
   // show address wallet in ui
   const displayAddress = useTonAddress();
   // ignore all request in moment, send for connect wallet
@@ -181,9 +214,68 @@ export default function Wallet() {
   // this state save loads information 
   const [referralLevelsLoading, setReferralLevelsLoading] = useState(false);
 
-  // ====================================================
-  // TON PRICE
-  // ====================================================
+  const [walletPage,setWalletPage] = useState("home")
+
+  const [topupStep,setTopupStep] = useState(1);
+  
+  const [topupAmount,setTopupAmount] = useState("");
+  
+  const [topupError,setTopupError] = useState("");
+
+  const [withdrawPageAsset,setWithdrawPageAsset] = useState("ECG");
+
+  const [withdrawPageAmount,setWithdrawPageAmount] = useState("");
+  
+  const [withdrawPageError,setWithdrawPageError] = useState("");
+
+  const [swapAmount,setSwapAmount] = useState("");
+  
+  const [swapError,setSwapError] = useState("");
+
+  const [swapLoading,setSwapLoading] = useState(false);
+  
+  const [topupLoading, setTopupLoading] = useState(false);
+
+  const [topupStatus,setTopupStatus] = useState("");
+
+
+
+
+    // WALLET TRANSACTIONS
+  const [transactionFilter, setTransactionFilter] = useState("all");
+
+  const [walletTransactions, setWalletTransactions] = useState([]);
+  const [transactionsLoading, setTransactionsLoading] = useState(false);
+  const [transactionsError, setTransactionsError] = useState("");
+  const verificationRunning = useRef(false);
+
+  const loadWalletTransactions = useCallback(async () => {
+    if (!address) {
+      setWalletTransactions([]);
+      return;
+    }
+    try {
+      setTransactionsLoading(true);
+      const response = await api.get("/wallet/transactions/", {
+        params: { wallet_address: address },
+      });
+      setWalletTransactions(Array.isArray(response.data) ? response.data : []);
+      setTransactionsError("");
+    } catch (err) {
+      console.error("[WALLET TRANSACTIONS]", err);
+      setTransactionsError("Could not load transactions from server.");
+    } finally {
+      setTransactionsLoading(false);
+    }
+  }, [address]);
+
+  useEffect(() => {
+    if (walletPage !== "transactions" || !address) return undefined;
+    loadWalletTransactions();
+    const timer = window.setInterval(loadWalletTransactions, 15000);
+    return () => window.clearInterval(timer);
+  }, [address, walletPage, loadWalletTransactions]);
+
 
 
   
@@ -1047,12 +1139,683 @@ export default function Wallet() {
 
   const canWithdrawUsdtReferral = referralProfitUsdtUnlocked > 0;
 
+
+  const renderSwapPage = () => {
+    const amount = Number(swapAmount)
+
+    //Available ECG profit balance
+
+    const available = withdrawableBalance;
+
+    // ECG_PER_USDT = 312
+    // TON price comes from CoinGecko
+    const rate = tonPrice
+     ? 1 / (ECG_PER_USDT * tonPrice)
+     : 0;
+    const receiveTon = 
+    Number.isFinite(amount) && amount > 0
+    ? amount * rate
+    : 0;
+    const handleSwap = () => {
+      if (!Number.isFinite(amount) || amount <= 0){
+        setSwapError("Enter a valid ECG amount.");
+        return;
+
+      }
+    
+    if (amount > available) {
+      setSwapError("Insufficient ECG balance.");
+      return;
+    }
+
+    if (!tonPrice || !Number.isFinite(tonPrice)) {
+      setSwapError("Ton price is not available.");
+      return;
+    }
+
+    setSwapError(
+      "Swap preview is ready. Real swap requires backend integration."
+    );
+    };
+
+
+    return (
+      <div className="wallet-topup-glass">
+        <button
+        type="button"
+        className="wallet-topup-back"
+        onClick={()=>{
+          setWalletPage("home");
+          setSwapAmount("");
+          setSwapError("");
+        }}
+        >
+          ← Back to Wallet
+        </button>
+
+        <h2>Swap</h2>
+        
+        <p>
+          Available:{available.toFixed(2)} ECG
+        </p>
+
+        <label htmlFor="swap-amount">
+          From(ECG)
+        </label>
+
+        <div className="wallet-swap-input-row">
+          <input
+          id="swap-amount" 
+          type="number" 
+          min="0"
+          step="any"
+          placeholder="0.00"
+          value={swapAmount}
+          onChange={(e) => {
+            setSwapAmount(e.target.value);
+            setSwapError("");
+          }}
+          />
+
+          <button
+          type="button"
+          onClick={() => {
+            setSwapAmount(String(available));
+            setSwapError("");
+          }}
+          >
+            Max
+          </button>
+
+        </div>
+
+        <div className="wallet-swap-arrow">
+          ↓
+        </div>
+
+        <div className="wallet-swap-summary">
+          <div>
+            <span>You receive</span>
+            <strong>
+              ≈ {receiveTon.toFixed(6)} TON
+            </strong>
+          </div>
+
+           <div>
+          <span>Rate</span>
+          <strong>
+            1 ECG ≈ {rate.toFixed(8)} TON
+          </strong>
+        </div>
+
+        {swapError && (
+        <p role="status" className="wallet-topup-error">
+          {swapError}
+        </p>
+      )}
+
+      <button
+        type="button"
+        className="wallet-topup-continue"
+        onClick={handleSwap}
+        disabled={swapLoading}
+      >
+        {swapLoading ? "Processing..." : "Swap"}
+      </button>
+
+        </div>
+      </div>
+    )
+
+  }
+
+  // TRANSACTIONS PAGE
+const renderTransactionsPage = () => {
+  const filters = [
+    { key: "all", label: "All" },
+    { key: "topup", label: "Top Ups" },
+    { key: "withdraw", label: "Withdrawals" },
+    { key: "swap", label: "Swaps" },
+    { key: "purchase", label: "Purchases" },
+  ];
+
+  const filteredTransactions =
+    transactionFilter === "all"
+      ? walletTransactions
+      : walletTransactions.filter(
+          (tx) => tx.type === transactionFilter
+        );
+
+  return (
+    <div className="wallet-topup-glass wallet-transactions-glass">
+      <button
+        type="button"
+        className="wallet-topup-back"
+        onClick={() => setWalletPage("home")}
+      >
+        ← Back to Wallet
+      </button>
+
+      <h2>Transactions</h2>
+
+      <div className="wallet-transactions-tabs">
+        {filters.map((filter) => (
+          <button
+            key={filter.key}
+            type="button"
+            className={
+              transactionFilter === filter.key ? "active" : ""
+            }
+            onClick={() => setTransactionFilter(filter.key)}
+          >
+            {filter.label}
+          </button>
+        ))}
+      </div>
+
+      {transactionsError && <p role="alert" className="wallet-topup-error">{transactionsError}</p>}
+      {transactionsLoading && walletTransactions.length === 0 ? (
+        <p className="wallet-transactions-empty">Loading transactions...</p>
+      ) : filteredTransactions.length === 0 ? (
+        <p className="wallet-transactions-empty">
+          No transactions found.
+        </p>
+      ) : (
+        
+<div className="wallet-transactions-list">
+  {filteredTransactions.map((tx) => {
+    const type = String(tx.type || "").toLowerCase();
+
+    const isTopUp = type === "topup";
+    const isWithdraw = type === "withdraw";
+
+    return (
+      <div
+        className={`wallet-transaction-item ${
+          isTopUp
+            ? "tx-topup"
+            : isWithdraw
+            ? "tx-withdraw"
+            : ""
+        }`}
+        key={tx.id}
+      >
+        <div className="wallet-transaction-info">
+          <strong>
+            {tx.title ||
+              (isTopUp
+                ? "TON Top Up"
+                : isWithdraw
+                ? "Withdrawal"
+                : "Transaction")}
+          </strong>
+
+          <span>
+            {tx.date
+              ? new Date(tx.date).toLocaleString("en-US")
+              : "—"}
+          </span>
+        </div>
+
+        <div className="wallet-transaction-right">
+          <strong>
+            {isTopUp ? "+" : isWithdraw ? "−" : ""}
+            {tx.amount} {tx.asset}
+          </strong>
+
+          <span className="wallet-tx-status">
+            {tx.status}
+          </span>
+        </div>
+      </div>
+    );
+  })}
+</div>
+
+      )}
+    </div>
+  );
+};
+
+  const renderWithdrawPage = () => {
+    const available = withdrawableBalance;
+
+    const handleWithdrawContinue = () => {
+      const value = Number(withdrawPageAmount);
+
+      if (!Number.isFinite(value) || value <= 0) {
+        setWithdrawError("Enter a valid amount.");
+        return;
+      }
+
+      if (withdrawPageAsset !== "ECG") {
+        setWithdrawPageError(
+          "TON withdrawal is not configured in this form yet."
+        );
+        return;
+      }
+
+      if (value > available) {
+        setWithdrawPageError("Insufficient balance.");
+        return;
+      }
+
+      setWithdrawPageError("");
+
+      openWithdraw("ALL");
+      
+      setAmount(withdrawPageAmount);
+    };
+
+    return (
+      <div className="wallet-topup-glass">
+        <button
+        type="button"
+        className="wallet-topup-back"
+        onClick={() => setWalletPage("home")}
+        >
+          ← Back to Wallet
+        </button>
+
+        <h2>Withdraw</h2>
+        <p>
+          Available:{available.toFixed(2)}ECG
+        </p>
+
+        <label> Asset </label>
+
+        <div className="wallet-withdraw-assets">
+          <button
+          type="button"
+          className={withdrawPageAsset === "ECG" ? "active":""}
+          onClick={() => setWithdrawPageAsset("ECG")}
+          >
+            ECG
+
+          </button>
+
+          <button
+          type="button"
+          className={withdrawPageAsset === "TON" ? "active":""}
+          onClick={() => setWithdrawPageAsset("TON")}
+          >
+            TON
+          </button>
+        </div>
+        <label htmlFor="withdraw-page-amount">
+          Amount ({withdrawPageAsset})
+        </label>
+
+        <input
+        id="withdraw-page-amount"
+        type="number"
+        min="0"
+        step="any"
+        placeholder="0.00"
+        value={withdrawPageAmount}
+        onChange={(e) => {
+          setWithdrawPageAmount(e.target.value);
+          setWithdrawPageError("");
+        }}
+        />
+        {
+          withdrawPageError && (
+            <p role="alert" className="wallet-topup-error">
+              {withdrawPageError}
+            </p>
+          )
+        }
+        <button
+        type="button"
+        className="wallet-topup-continue"
+        onClick={handleWithdrawContinue}
+        >
+          Continue
+        </button>
+
+      </div>
+    )
+  }
+
+
+ 
+  // Resume a submitted on-chain payment until Django confirms it.
+  // The signed BOC is not a secret; sessionStorage survives a page reload.
+  const verifySubmittedTopUp = useCallback(async (payment) => {
+    if (!payment?.deposit_id || !payment?.boc || verificationRunning.current) return;
+    verificationRunning.current = true;
+    setTopupLoading(true);
+    setTopupStep(4);
+    setTopupError("");
+
+    try {
+      // Indexers can take some time to observe a blockchain transaction.
+      for (let attempt = 0; attempt < 12; attempt += 1) {
+        try {
+          const response = await api.post("/ton/topup/confirm/", {
+            deposit_id: payment.deposit_id,
+            boc: payment.boc,
+          });
+          if (response.data?.status === "confirmed") {
+            sessionStorage.removeItem("pending_ton_topup");
+            setTopupStatus("TON Top Up confirmed and credited to your internal wallet.");
+            const walletResponse = await api.get(`/wallet/${encodeURIComponent(payment.wallet_address)}/`);
+            setWallet(walletResponse.data);
+            await loadWalletTransactions();
+            return;
+          }
+          setTopupStatus("Payment submitted. Waiting for blockchain confirmation...");
+        } catch (err) {
+          if (err?.response?.status === 409 || err?.response?.status === 400) {
+            throw new Error(err?.response?.data?.error || "Top Up verification failed.");
+          }
+          // Transient TON indexer/API errors: retry, never credit locally.
+          setTopupStatus("Checking blockchain confirmation...");
+        }
+        if (attempt < 11) await new Promise((resolve) => setTimeout(resolve, 5000));
+      }
+      setTopupStatus("Still pending. Use Retry Verification to check again; no funds have been credited yet.");
+    } catch (err) {
+      setTopupError(err.message || "Could not confirm Top Up.");
+    } finally {
+      verificationRunning.current = false;
+      setTopupLoading(false);
+    }
+  }, [loadWalletTransactions]);
+
+  useEffect(() => {
+    if (!address) return;
+    try {
+      const payment = JSON.parse(sessionStorage.getItem("pending_ton_topup") || "null");
+      if (payment?.wallet_address === address && payment.deposit_id && payment.boc) {
+        verifySubmittedTopUp(payment);
+      }
+    } catch (error) {
+      console.error("Cannot restore pending TON Top Up", error);
+    }
+  }, [address, verifySubmittedTopUp]);
+
+  const submitTonTopUp = async () => {
+    const walletAddress = tonWallet?.account?.address;
+    const amountText = String(topupAmount).trim();
+    if (!walletAddress || !tonConnectUI.connected) {
+      setTopupError("Connect your real TON wallet first.");
+      return;
+    }
+    // Validate up to 9 decimals without floating-point precision errors.
+    if (!/^(?:0|[1-9]\d*)(?:\.\d{1,9})?$/.test(amountText) || Number(amountText) <= 0) {
+      setTopupError("Enter a valid positive TON amount (up to 9 decimals).");
+      return;
+    }
+    if (verificationRunning.current || topupLoading) return;
+    if (sessionStorage.getItem("pending_ton_topup")) {
+      setTopupError("A previous TON Top Up is still pending verification. Complete it before starting another.");
+      setTopupStep(4);
+      return;
+    }
+    setTopupLoading(true);
+    setTopupError("");
+    setTopupStatus("");
+    try {
+      const { data: deposit } = await api.post("/ton/topup/create/", {
+        wallet_address: walletAddress,
+        amount: amountText,
+      });
+      if (deposit.status !== "pending" || !deposit.deposit_id || !deposit.reference || !deposit.transaction?.messages?.[0]) {
+        throw new Error("Invalid Top Up response from server.");
+      }
+      if (String(deposit.network) !== String(tonWallet?.account?.chain)) {
+        throw new Error("Wallet network does not match the server TON network. Check Mainnet/Testnet before paying.");
+      }
+      const commentCell = beginCell().storeUint(0, 32)
+        .storeStringTail(`TOPUP:${deposit.reference}`).endCell();
+      const transaction = {
+        ...deposit.transaction,
+        messages: deposit.transaction.messages.map((message) => ({
+          ...message,
+          payload: Buffer.from(commentCell.toBoc()).toString("base64"),
+        })),
+      };
+      const result = await tonConnectUI.sendTransaction(transaction);
+      if (!result?.boc) throw new Error("Wallet did not return a signed transaction.");
+
+      const payment = { deposit_id: deposit.deposit_id, boc: result.boc, wallet_address: walletAddress };
+      sessionStorage.setItem("pending_ton_topup", JSON.stringify(payment));
+      setTopupStep(4);
+      setTopupLoading(false);
+      await verifySubmittedTopUp(payment);
+    } catch (error) {
+      console.error("[TON TOPUP]", error);
+      setTopupError(error?.response?.data?.error || error?.message || "Could not submit Top Up.");
+      setTopupLoading(false);
+    }
+  };
+
+  const retryTonVerification = () => {
+    try {
+      const payment = JSON.parse(sessionStorage.getItem("pending_ton_topup") || "null");
+      if (payment?.wallet_address === address) verifySubmittedTopUp(payment);
+      else setTopupError("No pending Top Up found for this wallet.");
+    } catch {
+      setTopupError("Cannot read pending Top Up.");
+    }
+  };
+
+  const renderTopUp = () => {
+    const amount = Number(topupAmount);
+
+    const continueTopUp = () => {
+      const amount = Number(topupAmount);
+
+      if (!Number.isFinite(amount) || amount <= 0){
+        setTopupError("Enter a valid TON amount.");
+        return;
+      }
+
+      setTopupError("");
+      if (isTonWalletConnected) {
+        setTopupStep(3);
+      } else {
+        setTopupStep(2);
+      }
+    }
+    return(
+      <div className="wallet-topup-glass">
+
+        <button
+        className="wallet-topup-back"
+        onClick={() => {
+          setWalletPage("home");
+          setTopupStep(1);
+          setTopupAmount("");
+          setTopupError("");
+        }}
+        >
+          ← Back to Wallet
+
+        </button>
+
+        <div className="wallet-topup-progress">
+          <span className={topupStep >= 1 ? "active": ""}/>
+          <span className={topupStep >= 2 ? "active": ""}/>
+          <span className={topupStep >= 3 ? "active": ""}/>
+          <span className={topupStep >= 4 ? "active": ""}/>
+        </div>
+
+        <p className="wallet-topup-step">
+          Step {topupStep} of 4
+        </p>
+
+        {topupStep === 1 && (
+          <>
+            <h2>How much do you want to add?</h2>
+
+            <label htmlFor = "topup-amount">
+              Amount(TON)
+            </label>
+
+            <input 
+            id="topup-amount"
+            type="number" 
+            min="0"
+            step="any"
+            placeholder="0.00"
+            value={topupAmount}
+            onChange={(e) => {
+              setTopupAmount(e.target.value);
+              setTopupError("");
+            }}
+            />
+
+            <div className="wallet-topup-quick">
+              {[10,50,100,500].map((value) => (
+                <button
+                key={value}
+                onClick={() => {
+                  setTopupAmount(String(value));
+                  setTopupError("");
+                }}
+                >
+                  {value} TON
+                </button>
+              ))}
+            </div>
+            {topupError && (
+              <p role="alert" className="wallet-topup-error">
+                {topupError}
+              </p>
+            )}
+            <button
+            className="wallet-topup-continue"
+            onClick={continueTopUp}
+            >
+              Continue
+            </button>
+          </>
+          
+        )}
+
+        {topupStep === 2 && (
+          <>
+            <h2>Connect your wallet</h2>
+           <p>
+            Amount: {amount.toLocaleString("en-US")} TON
+           </p>
+           <p>
+            In the next step, we will connect your
+            existing TonConnect integration.
+           </p>
+
+           <button
+           className="wallet-topup-continue"
+           onClick={() => setTopupStep(1)}
+           >
+            Edit amount
+
+           </button>
+          
+          </>
+        )}
+
+        {topupStep === 3 && (
+            <>
+              <h2>Confirm Payment</h2>
+
+              <div className="wallet-topup-summary">
+                <p>
+                  Amount: <strong>{topupAmount} TON</strong>
+                </p>
+
+                <p>
+                  From: <strong>{shortenMiddle(address)}</strong>
+                </p>
+
+                <p>
+                  Network: <strong>TON</strong>
+                </p>
+              </div>
+
+              {LOCAL_MODE && !tonConnectUI.connected && (
+                <p className="wallet-topup-error">
+                  Local Preview Mode — No real wallet connected
+                </p>
+              )}
+
+             <button
+             type="button"
+             className="wallet-topup-continue"
+             onClick={submitTonTopUp}
+             disabled={topupLoading || !tonConnectUI.connected}
+             >
+              {topupLoading ? "Submitting..." : "Pay with TON"}
+             </button>
+
+             {topupError && (
+              <p role="alert" className="wallet-topup-error">
+                {topupError}
+              </p>
+             )}
+            </>
+          )}
+
+          
+        {topupStep === 4 && (
+          <>
+            <h2>Top Up Submitted</h2>
+
+            <p>
+              {topupStatus ||
+                "Transfer submitted. Waiting for blockchain verification."}
+            </p>
+
+            <p>
+              Your TON balance will update after the backend
+              confirms the transaction.
+            </p>
+            <button type="button" className="wallet-topup-continue" onClick={retryTonVerification} disabled={topupLoading}>
+              {topupLoading ? "Verifying..." : "Retry Verification"}
+            </button>
+            {topupError && <p role="alert" className="wallet-topup-error">{topupError}</p>}
+
+            <button
+              type="button"
+              className="wallet-topup-continue"
+              onClick={() => {
+                setWalletPage("home");
+                setTopupStep(1);
+                setTopupAmount("");
+                setTopupError("");
+                setTopupStatus("");
+              }}
+            >
+              Back to Wallet
+            </button>
+          </>
+        )}
+
+      </div>
+    )
+  }
+
+  useEffect(() => {
+    if (
+      walletPage === "topup" &&
+      topupStep === 2 && 
+      isTonWalletConnected
+    ){
+      setTopupStep(3);
+    }
+  }, [
+    walletPage,
+    topupStep,
+    isTonWalletConnected
+  ]);
   // ====================================================
   // UI
   // ====================================================
 
   return (
-    <div className="wallet-page-container">
+    
 
       <div className="wallet-box wallet-box--redesigned">
 
@@ -1070,6 +1833,169 @@ export default function Wallet() {
 
         </div>
 
+        <div className="wallet-page-container">
+          {walletPage === "topup" && renderTopUp()}
+          {walletPage === "withdraw" && renderWithdrawPage()}
+          {walletPage === "swap" && renderSwapPage()}
+          {walletPage === "transactions" && renderTransactionsPage()}
+
+          
+{walletPage === "home" && (
+  <>
+    <div className="wallet-demo-card">
+      {/* Connected wallet and ECG contract addresses */}
+      <div
+        style={{
+          display: "grid",
+          gap: 12,
+          marginBottom: 20,
+        }}
+      >
+        <div
+          style={{
+            padding: 14,
+            border: "1px solid rgba(255,255,255,0.14)",
+            borderRadius: 14,
+            background: "rgba(255,255,255,0.045)",
+            minWidth: 0,
+          }}
+        >
+          <span style={{ fontSize: 12, opacity: 0.7 }}>
+            Connected TON Wallet Address
+          </span>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              marginTop: 8,
+            }}
+          >
+            <span
+              title={address || "Wallet not connected"}
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                overflowWrap: "anywhere",
+                minWidth: 0,
+              }}
+            >
+              {address ? shortenMiddle(address, 9, 8) : "Not connected"}
+            </span>
+            <button
+              type="button"
+              className="wallet-copy-icon-btn"
+              disabled={!address}
+              onClick={() => copyText("Wallet address", address)}
+              aria-label="Copy connected wallet address"
+              title="Copy wallet address"
+            >
+              <CopyIcon size={19} />
+            </button>
+          </div>
+        </div>
+
+        <div
+          style={{
+            padding: 14,
+            border: "1px solid rgba(255,255,255,0.14)",
+            borderRadius: 14,
+            background: "rgba(255,255,255,0.045)",
+            minWidth: 0,
+          }}
+        >
+          <span style={{ fontSize: 12, opacity: 0.7 }}>
+            ECG Token Contract (BNB Smart Chain)
+          </span>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              marginTop: 8,
+            }}
+          >
+            <a
+              href={ECG_CONTRACT_LINK}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={ECG_CONTRACT_ADDRESS}
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                overflowWrap: "anywhere",
+                minWidth: 0,
+              }}
+            >
+              {shortenMiddle(ECG_CONTRACT_ADDRESS, 9, 8)}
+            </a>
+          <button
+            type="button"
+            className="wallet-copy-icon-btn"
+            onClick={() => copyText("Contract address", ECG_CONTRACT_ADDRESS)}
+            aria-label="Copy ECG contract address"
+            title="Copy contract address"
+          >
+            <CopyIcon size={19} />
+          </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="wallet-demo-balance">
+        <span>TON Balance</span>
+        <h2>
+          {wallet
+            ? `${Number(wallet.ton_balance ?? 0).toLocaleString(
+                "en-US",
+                { maximumFractionDigits: 9 }
+              )} TON`
+            : "— TON"}
+        </h2>
+      </div>
+
+      <div className="wallet-demo-divider" />
+
+      <div className="wallet-demo-balance">
+        <span>ECG Balance</span>
+        <h2>
+          {address
+            ? withdrawableBalance.toLocaleString("en-US", {
+                maximumFractionDigits: 2,
+              })
+            : "—"} ECG
+        </h2>
+      </div>
+
+      <div className="wallet-demo-actions">
+        <button onClick={() => setWalletPage("topup")}>
+          ＋ Top Up
+        </button>
+
+        <button onClick={() => setWalletPage("withdraw")}>
+          ↗ Withdraw
+        </button>
+
+        <button onClick={() => setWalletPage("swap")}>
+          ⇄ Swap
+        </button>
+
+        <button onClick={() => setWalletPage("transactions")}>
+          ☷ Transactions
+        </button>
+      </div>
+    </div>
+
+    <RewardCap />
+  </>
+)}
+
+       
+
+       
+
 
         {/* if didn't address */}
         {!address ? (
@@ -1081,10 +2007,12 @@ export default function Wallet() {
           <div className="wallet-connect-state">
 
             {/* show button ton connect */}
+            {!LOCAL_MODE && (
             <div className="connect-button-wrapper">
               <TonConnectButton />
             </div>
-
+            )
+            }
             <p className="wallet-connect-hint">
               Connect your TON wallet to see your balance,
               lock status and withdrawal progress.
@@ -1100,188 +2028,8 @@ export default function Wallet() {
 
           <>
 
-            {/* CONNECTED WALLET */}
+     
 
-            <div className="wallet-connected-panel">
-
-              <div className="wallet-panel-title-row">
-
-                <div className="wallet-panel-icon">
-                  🔗
-                </div>
-
-                <div>
-
-                  <h3 className="panel-title">
-                    Connected Wallet
-                  </h3>
-
-                </div>
-
-              </div>
-
-
-              <div className="wallet-address-card">
-
-                <div className="wallet-address-left">
-
-                  <div className="wallet-avatar-badge" aria-hidden="true">
-                    <svg
-                      className="wallet-avatar-icon"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      xmlns="http://www.w3.org/2000/svg"
-                    >
-                      <path
-                        d="M5.25 6.75H16.5C18.1569 6.75 19.5 8.09315 19.5 9.75V17.25H6.75C5.50736 17.25 4.5 16.2426 4.5 15V7.5C4.5 7.08579 4.83579 6.75 5.25 6.75Z"
-                        fill="currentColor"
-                      />
-                      <path
-                        d="M6.25 6.75V5.75C6.25 5.19772 6.69772 4.75 7.25 4.75H15.5"
-                        stroke="currentColor"
-                        strokeWidth="1.6"
-                        strokeLinecap="round"
-                      />
-                      <path
-                        d="M15.25 10.25H20V14.25H15.25C14.1454 14.25 13.25 13.3546 13.25 12.25C13.25 11.1454 14.1454 10.25 15.25 10.25Z"
-                        fill="#6C5CFF"
-                        stroke="white"
-                        strokeWidth="1.25"
-                      />
-                      <circle cx="16.2" cy="12.25" r="0.8" fill="white" />
-                    </svg>
-                  </div>
-
-                  <div className="wallet-address-main">
-                    {/* show short wallet address */}
-                    {shortenMiddle(displayAddress || address, 6, 6)}
-                  </div>
-
-                </div>
-
-
-                {/* click for copy address */}
-                <button
-                  type="button"
-                  className="icon-action-btn"
-                  onClick={() => copyText("Wallet address", displayAddress || address)}
-                  aria-label="Copy wallet address"
-                  title="Copy wallet address"
-                >
-                  <CopyIcon size={22} />
-                </button>
-
-              </div>
-
-            </div>
-
-
-            {/* CONTRACT */}
-
-            <div className="contract-card">
-
-              <div className="contract-left">
-
-                <div className="contract-icon" aria-hidden="true">
-                  <svg
-                    className="contract-icon-svg"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      d="M6.5 3.75H13.75L17.5 7.5V14.25"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M13.5 3.9V7.75H17.35"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M6.5 3.75V18.25H12.25"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    <path
-                      d="M8.75 10H14"
-                      stroke="currentColor"
-                      strokeWidth="1.65"
-                      strokeLinecap="round"
-                    />
-                    <path
-                      d="M8.75 13H12.5"
-                      stroke="currentColor"
-                      strokeWidth="1.65"
-                      strokeLinecap="round"
-                    />
-                    <circle
-                      cx="17"
-                      cy="17"
-                      r="4.15"
-                      fill="#33E59B"
-                      stroke="#071B22"
-                      strokeWidth="1.35"
-                    />
-                    <path
-                      d="M15.25 17.1L16.45 18.25L18.85 15.75"
-                      stroke="#071B22"
-                      strokeWidth="1.65"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </div>
-
-                <div>
-
-                  <div className="contract-title">
-                    ECG Token Contract
-                  </div>
-
-                  <div className="contract-address">
-                    {shortenMiddle(ECG_CONTRACT_ADDRESS, 6, 8)}
-                  </div>
-
-                  <div className="contract-note">
-                    ✓ Official ECG Token Contract
-                  </div>
-
-                </div>
-
-              </div>
-
-
-              <div className="contract-actions">
-
-                <button
-                  type="button"
-                  className="small-outline-btn"
-                  onClick={() => copyText("Contract address", ECG_CONTRACT_ADDRESS)}
-                >
-                  <CopyIcon size={18} />
-                  <span>Copy</span>
-                </button>
-
-
-                <button
-                  type="button"
-                  className="small-outline-btn"
-                  onClick={openContractLink}
-                >
-                  View
-                </button>
-
-              </div>
-
-            </div>
 
 
             {/* COPY TOAST */}
@@ -1369,235 +2117,263 @@ export default function Wallet() {
 
               <>
 
-                {/* FOUR PROFIT WITHDRAW BOXES */}
-
-                <section
-                  className="wallet-profit-withdraw-card"
-                  style={{
-                    maxHeight: "520px",
-                    overflowY: "auto",
-                    paddingRight: "6px",
-                    marginTop: 14,
-                    padding: 16,
-                    borderRadius: 18,
-                    border: "1px solid rgba(255,255,255,0.10)",
-                    background: "rgba(255,255,255,0.035)",
-                  }}
-                >
-                  <div style={{ marginBottom: 12 }}>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        opacity: 0.65,
-                        letterSpacing: "0.10em",
-                        fontWeight: 800,
-                      }}
-                    >
-                      PROFIT WITHDRAW
+                 <section className="pw-section">
+                  <div className="pw-section-head">
+                    <div>
+                      <div className="pw-eyebrow">{t("wallet.PROFITWITHDRAW")}</div>
+                      <h3 className="pw-heading">{t("wallet.ECGTetherProfit")}</h3>
+                      <p className="pw-subheading">
+                        {t("wallet.pwsubheading")}
+                      </p>
                     </div>
-                    <strong
-                      style={{
-                        display: "block",
-                        marginTop: 4,
-                        fontSize: 18,
-                      }}
-                    >
-                      ECG & Tether Profit
-                    </strong>
+                    <span className="pw-live-dot" aria-hidden="true" />
                   </div>
 
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))",
-                      gap: 10,
-                    }}
-                  >
-                    {/* ECG OWN 5% */}
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        minHeight: 158,
-                        padding: 12,
-                        borderRadius: 12,
-                        background: "rgba(255,255,255,0.03)",
-                        border: "1px solid rgba(255,255,255,0.06)",
-                      }}
-                    >
-                      <div style={{ fontSize: 11, opacity: 0.62 }}>
-                        ECG • Own 5% Profit
+                  <div className="pw-list">
+
+                    {/* 1. ECG • OWN 5% */}
+                    <article className="pw-card pw-card--ecg">
+                      <div className="pw-card-top">
+                        <div className="pw-card-icon-wrap">
+                          <img
+                            src={ecgLogo}
+                            alt=""
+                            aria-hidden="true"
+                            className="output-token-logo"
+                          />
+                        </div>
+                        <div className="pw-card-titles">
+                          <span className="pw-card-title">{t("wallet.pwcardtitle")}</span>
+                          <span className="pw-card-sub">{t("wallet.pwcardsub")}</span>
+                        </div>
+                        <span className={`pw-badge ${canWithdrawEcgSelf ? "pw-badge--ok" : "pw-badge--lock"}`}>
+                          {canWithdrawEcgSelf 
+                            ? t("wallet.available") 
+                            : t("wallet.locked")
+                          }
+                        </span>
                       </div>
-                      <strong style={{ marginTop: 5, fontSize: 16 }}>
-                        {ownEcgProfitTotal.toFixed(4)} ECG
-                      </strong>
-                      <div style={{ fontSize: 10, opacity: 0.58, marginTop: 6, lineHeight: 1.5 }}>
-                        Available: {selfProfitUnlocked.toFixed(4)} ECG
-                        <br />
-                        Locked 30d: {purchaseProfitLocked.toFixed(4)} ECG
+
+                      <div className="pw-card-amount">
+                        <strong>{ownEcgProfitTotal.toFixed(4)}</strong>
+                        <span>ECG</span>
                       </div>
+
+                      <div className="pw-progress">
+                        <div
+                          className="pw-progress-fill"
+                          style={{
+                            width:
+                              ownEcgProfitTotal > 0
+                                ? `${Math.min(
+                                    100,
+                                    (selfProfitUnlocked / ownEcgProfitTotal) * 100
+                                  )}%`
+                                : "0%",
+                          }}
+                        />
+                      </div>
+
+                      <div className="pw-meta-row">
+                        <div className="pw-meta">
+                          <span>{t("wallet.Available")}</span>
+                          <b>{selfProfitUnlocked.toFixed(4)} ECG</b>
+                        </div>
+                        <div className="pw-meta pw-meta--right">
+                          <span>{t("wallet.Locked30d")}</span>
+                          <b>{purchaseProfitLocked.toFixed(4)} ECG</b>
+                        </div>
+                      </div>
+
                       <button
                         type="button"
+                        className="pw-btn"
                         onClick={() => openWithdraw("SELF")}
                         disabled={!canWithdrawEcgSelf}
-                        style={{
-                          marginTop: "auto",
-                          alignSelf: "flex-start",
-                          padding: "6px 11px",
-                          borderRadius: 8,
-                          border: "1px solid rgba(255,255,255,0.12)",
-                          background: canWithdrawEcgSelf ? "rgba(35,211,238,0.12)" : "rgba(255,255,255,0.04)",
-                          color: "inherit",
-                          fontSize: 10,
-                          fontWeight: 800,
-                          cursor: canWithdrawEcgSelf ? "pointer" : "not-allowed",
-                          opacity: canWithdrawEcgSelf ? 1 : 0.55,
-                        }}
                       >
-                        {canWithdrawEcgSelf ? "Withdraw" : "🔒 Locked 30d"}
+                        {canWithdrawEcgSelf 
+                          ? t("wallet.withdraw") 
+                          : t("wallet.locked30d")
+                        }
                       </button>
-                    </div>
+                    </article>
 
-                    {/* ECG REFERRAL */}
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        minHeight: 158,
-                        padding: 12,
-                        borderRadius: 12,
-                        background: "rgba(35,211,238,0.06)",
-                        border: "1px solid rgba(35,211,238,0.14)",
-                      }}
-                    >
-                      <div style={{ fontSize: 11, opacity: 0.62 }}>
-                        ECG • Referral Profit
+
+                    {/* 2. ECG • REFERRAL */}
+                    <article className="pw-card pw-card--ecg pw-card--ref">
+                      <div className="pw-card-top">
+                        <div className="pw-card-icon-wrap">
+                          <img
+                            src={ecgLogo}
+                            alt=""
+                            aria-hidden="true"
+                            className="output-token-logo"
+                          />
+                        </div>
+                        <div className="pw-card-titles">
+                          <span className="pw-card-title">{t("wallet.ECGReferralProfit")}</span>
+                          <span className="pw-card-sub">{t("wallet.Instantunlock")}</span>
+                        </div>
+                        <span className={`pw-badge ${canWithdrawEcgReferral ? "pw-badge--ok" : "pw-badge--mute"}`}>
+                          {canWithdrawEcgReferral
+                           ? t("wallet.Available")
+                           : t("wallet.Nobalance")
+                           }
+                        </span>
                       </div>
-                      <strong style={{ marginTop: 5, fontSize: 16 }}>
-                        {referralAvailableEcg.toFixed(4)} ECG
-                      </strong>
-                      <div style={{ fontSize: 10, opacity: 0.68, marginTop: 6, lineHeight: 1.55 }}>
-                        Level 1 • 5%: {referralLevel1FivePercentEcg.toFixed(4)} ECG
-                        <br />
-                        Levels 2–5 • 1% each: {referralLevels2To5OnePercentEcg.toFixed(4)} ECG
-                        <br />
-                        Available instantly
+
+                      <div className="pw-card-amount">
+                        <strong>{referralAvailableEcg.toFixed(4)}</strong>
+                        <span>ECG</span>
                       </div>
+
+                      <div className="pw-meta-row">
+                        <div className="pw-meta">
+                          <span>{t("wallet.level")}</span>
+                          <b>{referralLevel1FivePercentEcg.toFixed(4)} ECG</b>
+                        </div>
+                        <div className="pw-meta pw-meta--right">
+                          <span>{t("wallet.level1")}</span>
+                          <b>{referralLevels2To5OnePercentEcg.toFixed(4)} ECG</b>
+                        </div>
+                      </div>
+
                       <button
                         type="button"
+                        className="pw-btn pw-btn--ref"
                         onClick={() => openWithdraw("REFERRAL")}
                         disabled={!canWithdrawEcgReferral}
-                        style={{
-                          marginTop: "auto",
-                          alignSelf: "flex-start",
-                          padding: "6px 11px",
-                          borderRadius: 8,
-                          border: "1px solid rgba(255,255,255,0.12)",
-                          background: canWithdrawEcgReferral ? "rgba(35,211,238,0.12)" : "rgba(255,255,255,0.04)",
-                          color: "inherit",
-                          fontSize: 10,
-                          fontWeight: 800,
-                          cursor: canWithdrawEcgReferral ? "pointer" : "not-allowed",
-                          opacity: canWithdrawEcgReferral ? 1 : 0.55,
-                        }}
                       >
-                        {canWithdrawEcgReferral ? "Withdraw" : "No balance"}
+                        {canWithdrawEcgReferral
+                         ? t("wallet.withdraw")
+                         : t("wallet.Nobalance")
+                        }
                       </button>
-                    </div>
+                    </article>
 
-                    {/* USDT OWN 5% */}
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        minHeight: 158,
-                        padding: 12,
-                        borderRadius: 12,
-                        background: "rgba(255,255,255,0.03)",
-                        border: "1px solid rgba(255,255,255,0.06)",
-                      }}
-                    >
-                      <div style={{ fontSize: 11, opacity: 0.62 }}>
-                        Tether • Own 5% Profit
+
+                    {/* 3. USDT • OWN 5% */}
+                    <article className="pw-card pw-card--usdt">
+                      <div className="pw-card-top">
+                        <div className="pw-card-icon-wrap">
+                          <img
+                            src={usdtLogo}
+                            alt=""
+                            aria-hidden="true"
+                            className="output-token-logo"
+                          />
+                        </div>
+                        <div className="pw-card-titles">
+                          <span className="pw-card-title">{t("wallet.TetherOwn5Profit")}</span>
+                          <span className="pw-card-sub">{t("wallet.daymaturity")}</span>
+                        </div>
+                        <span className={`pw-badge ${canWithdrawUsdtSelf ? "pw-badge--ok" : "pw-badge--lock"}`}>
+                          {canWithdrawUsdtSelf
+                           ? t("wallet.Available") 
+                           : t("wallet.locked")
+                           }
+                        </span>
                       </div>
-                      <strong style={{ marginTop: 5, fontSize: 16 }}>
-                        {ownUsdtProfitTotal.toFixed(4)} USDT
-                      </strong>
-                      <div style={{ fontSize: 10, opacity: 0.58, marginTop: 6, lineHeight: 1.5 }}>
-                        Available: {selfProfitUsdtUnlocked.toFixed(4)} USDT
-                        <br />
-                        Locked 30d: {purchaseProfitUsdtLocked.toFixed(4)} USDT
+
+                      <div className="pw-card-amount">
+                        <strong>{ownUsdtProfitTotal.toFixed(4)}</strong>
+                        <span>USDT</span>
                       </div>
+
+                      <div className="pw-progress pw-progress--usdt">
+                        <div
+                          className="pw-progress-fill"
+                          style={{
+                            width:
+                              ownUsdtProfitTotal > 0
+                                ? `${Math.min(
+                                    100,
+                                    (selfProfitUsdtUnlocked / ownUsdtProfitTotal) * 100
+                                  )}%`
+                                : "0%",
+                          }}
+                        />
+                      </div>
+
+                      <div className="pw-meta-row">
+                        <div className="pw-meta">
+                          <span>{t("wallet.available")}</span>
+                          <b>{selfProfitUsdtUnlocked.toFixed(4)} USDT</b>
+                        </div>
+                        <div className="pw-meta pw-meta--right">
+                          <span>{t("wallet.Locked30d")}</span>
+                          <b>{purchaseProfitUsdtLocked.toFixed(4)} USDT</b>
+                        </div>
+                      </div>
+
                       <button
                         type="button"
+                        className="pw-btn pw-btn--usdt"
                         onClick={() => openUsdtWithdraw("SELF")}
                         disabled={!canWithdrawUsdtSelf}
-                        style={{
-                          marginTop: "auto",
-                          alignSelf: "flex-start",
-                          padding: "6px 11px",
-                          borderRadius: 8,
-                          border: "1px solid rgba(255,255,255,0.12)",
-                          background: canWithdrawUsdtSelf ? "rgba(35,211,238,0.12)" : "rgba(255,255,255,0.04)",
-                          color: "inherit",
-                          fontSize: 10,
-                          fontWeight: 800,
-                          cursor: canWithdrawUsdtSelf ? "pointer" : "not-allowed",
-                          opacity: canWithdrawUsdtSelf ? 1 : 0.55,
-                        }}
                       >
-                        {canWithdrawUsdtSelf ? "Withdraw" : "🔒 Locked 30d"}
+                        {canWithdrawUsdtSelf
+                         ? t("wallet.withdraw") 
+                         : t("wallet.locked30d")}
                       </button>
-                    </div>
+                    </article>
 
-                    {/* USDT REFERRAL */}
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        minHeight: 158,
-                        padding: 12,
-                        borderRadius: 12,
-                        background: "rgba(35,211,238,0.06)",
-                        border: "1px solid rgba(35,211,238,0.14)",
-                      }}
-                    >
-                      <div style={{ fontSize: 11, opacity: 0.62 }}>
-                        Tether • Referral Profit
+
+                    {/* 4. USDT • REFERRAL */}
+                    <article className="pw-card pw-card--usdt pw-card--ref">
+                      <div className="pw-card-top">
+                        <div className="pw-card-icon-wrap">
+                          <img
+                            src={usdtLogo}
+                            alt=""
+                            aria-hidden="true"
+                            className="output-token-logo"
+                          />
+                        </div>
+                        <div className="pw-card-titles">
+                          <span className="pw-card-title">{t("wallet.TetherReferralProfit")}</span>
+                          <span className="pw-card-sub">{t("wallet.InstantconvertstoTON")}</span>
+                        </div>
+                        <span className={`pw-badge ${canWithdrawUsdtReferral ? "pw-badge--ok" : "pw-badge--mute"}`}>
+                          {canWithdrawUsdtReferral 
+                          ? t("wallet.Available") 
+                          : t("wallet.Nobalance")
+                          }
+                        </span>
                       </div>
-                      <strong style={{ marginTop: 5, fontSize: 16 }}>
-                        {referralProfitUsdtUnlocked.toFixed(4)} USDT
-                      </strong>
-                      <div style={{ fontSize: 10, opacity: 0.68, marginTop: 6, lineHeight: 1.55 }}>
-                        Level 1 • 5%: {referralLevel1FivePercentUsdt.toFixed(4)} USDT
-                        <br />
-                        Levels 2–5 • 1% each: {referralLevels2To5OnePercentUsdt.toFixed(4)} USDT
-                        <br />
-                        Available instantly • converts to TON
+
+                      <div className="pw-card-amount">
+                        <strong>{referralProfitUsdtUnlocked.toFixed(4)}</strong>
+                        <span>USDT</span>
                       </div>
+
+                      <div className="pw-meta-row">
+                        <div className="pw-meta">
+                          <span>{t("wallet.level")}</span>
+                          <b>{referralLevel1FivePercentUsdt.toFixed(4)} USDT</b>
+                        </div>
+                        <div className="pw-meta pw-meta--right">
+                          <span>{t("wallet.level1")}</span>
+                          <b>{referralLevels2To5OnePercentUsdt.toFixed(4)} USDT</b>
+                        </div>
+                      </div>
+
                       <button
                         type="button"
+                        className="pw-btn pw-btn--usdt"
                         onClick={() => openUsdtWithdraw("REFERRAL")}
                         disabled={!canWithdrawUsdtReferral}
-                        style={{
-                          marginTop: "auto",
-                          alignSelf: "flex-start",
-                          padding: "6px 11px",
-                          borderRadius: 8,
-                          border: "1px solid rgba(255,255,255,0.12)",
-                          background: canWithdrawUsdtReferral ? "rgba(35,211,238,0.12)" : "rgba(255,255,255,0.04)",
-                          color: "inherit",
-                          fontSize: 10,
-                          fontWeight: 800,
-                          cursor: canWithdrawUsdtReferral ? "pointer" : "not-allowed",
-                          opacity: canWithdrawUsdtReferral ? 1 : 0.55,
-                        }}
                       >
-                        {canWithdrawUsdtReferral ? "Withdraw" : "No balance"}
+                        {canWithdrawUsdtReferral 
+                        ? t("wallet.withdraw") 
+                        : t("wallet.Nobalance")
+                        }
                       </button>
-                    </div>
+                    </article>
+
                   </div>
                 </section>
+             
 
 
                 {withdrawNotice && (
@@ -1615,183 +2391,6 @@ export default function Wallet() {
                 )}
 
 
-                {/* WITHDRAW HISTORY */}
-
-                <section className="withdraw-history-card">
-                  <div className="withdraw-history-header">
-                    <div>
-                      <div className="withdraw-history-eyebrow">TRANSACTIONS</div>
-                      <h3 className="withdraw-history-title">Withdrawal History</h3>
-                      <p className="withdraw-history-subtitle">
-                        Track your withdrawal requests and transaction receipts.
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      className="withdraw-history-refresh"
-                      onClick={loadWithdrawHistory}
-                      disabled={withdrawHistoryLoading}
-                    >
-                      <span className={withdrawHistoryLoading ? "withdraw-refresh-icon spinning" : "withdraw-refresh-icon"}>
-                        ↻
-                      </span>
-                      {withdrawHistoryLoading ? "Refreshing" : "Refresh"}
-                    </button>
-                  </div>
-
-                  {!withdrawHistory.length ? (
-                    <div className="withdraw-history-empty">
-                      <div className="withdraw-history-empty-icon">↗</div>
-                      <div>
-                        <strong>No withdrawal requests yet</strong>
-                        <span>Your withdrawal requests will appear here.</span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="withdraw-history-list">
-                      {withdrawHistory.map((item) => {
-                        const rawStatus = String(item.display_status || item.status || "").toUpperCase();
-
-                        const statusText =
-                          ["SUCCESS", "COMPLETE", "COMPLETED"].includes(rawStatus)
-                            ? "Complete"
-                            : rawStatus === "PENDING"
-                            ? "Pending"
-                            : rawStatus === "FAILED"
-                            ? "Failed"
-                            : rawStatus || "—";
-
-                        const statusClass =
-                          statusText === "Complete"
-                            ? "complete"
-                            : statusText === "Pending"
-                            ? "pending"
-                            : statusText === "Failed"
-                            ? "failed"
-                            : "default";
-
-                        const isTon = String(item.raw_asset || item.asset || "").toUpperCase() === "TON";
-                        const sourceAsset = String(item.source_asset || "ECG").toUpperCase();
-
-                        const requestedValue = isTon
-                          ? `${Number(
-                                      item.ton_amount ??
-                                      item.ton_received ??
-                                      item.converted_amount ??
-                                      item.output_amount ??
-                                      0
-                                    ).toLocaleString(undefined, {
-                              maximumFractionDigits: 9,
-                            })} TON`
-                          : `${Number(item.amount || 0).toLocaleString(undefined, {
-                              maximumFractionDigits: 6,
-                            })} ECG`;
-
-                        return (
-                          <article
-                            key={item.id}
-                            className="withdraw-history-item"
-                          >
-                            <div className="withdraw-history-item-top">
-                              <div className="withdraw-history-amount-wrap">
-                                <div className="withdraw-history-coin">
-                                  {isTon ? "T" : "E"}
-                                </div>
-
-                                <div>
-                                  <div className="withdraw-history-amount">
-                                    {requestedValue}
-                                  </div>
-                                  <div className="withdraw-history-id">
-                                    Request #{item.id}
-                                  </div>
-                                </div>
-                              </div>
-
-                              <span className={`withdraw-status-badge ${statusClass}`}>
-                                <span className="withdraw-status-dot" />
-                                {statusText}
-                              </span>
-                            </div>
-
-                            <div className="withdraw-history-details">
-                              <div className="withdraw-history-detail-row">
-                                <span className="withdraw-history-label">Destination</span>
-                                <span
-                                  className="withdraw-history-value withdraw-history-address"
-                                  title={item.destination_wallet || ""}
-                                >
-                                  {item.destination_wallet
-                                    ? shortenMiddle(item.destination_wallet, 8, 8)
-                                    : "—"}
-                                </span>
-                              </div>
-
-                              {isTon && (
-                                <div className="withdraw-history-detail-row">
-                                  <span className="withdraw-history-label">
-                                    {sourceAsset === "USDT" ? "USDT reserved" : "ECG reserved"}
-                                  </span>
-                                  <span className="withdraw-history-value">
-                                    {sourceAsset === "USDT"
-                                      ? `${Number(item.usdt_debited || item.amount || 0).toLocaleString(undefined, {
-                                          maximumFractionDigits: 6,
-                                        })} USDT`
-                                      : `${Number(item.ecg_debited || item.amount || 0).toLocaleString(undefined, {
-                                          maximumFractionDigits: 6,
-                                        })} ECG`}
-                                  </span>
-                                </div>
-                              )}
-
-                              <div className="withdraw-history-detail-row">
-                                <span className="withdraw-history-label">Requested</span>
-                                <span className="withdraw-history-value">
-                                  {item.created_at ? new Date(item.created_at).toLocaleString() : "—"}
-                                </span>
-                              </div>
-
-                              {statusText === "Complete" && (
-                                <>
-                                  <div className="withdraw-history-detail-row">
-                                    <span className="withdraw-history-label">Completed</span>
-                                    <span className="withdraw-history-value">
-                                      {item.completed_at ? new Date(item.completed_at).toLocaleString() : "—"}
-                                    </span>
-                                  </div>
-
-                                  {item.tx_hash && (
-                                    <div className="withdraw-history-tx-box">
-                                      <div className="withdraw-history-tx-main">
-                                        <span className="withdraw-history-label">TX Hash</span>
-                                        <span
-                                          className="withdraw-history-tx-value"
-                                          title={item.tx_hash}
-                                        >
-                                          {shortenMiddle(item.tx_hash, 12, 10)}
-                                        </span>
-                                      </div>
-
-                                      <button
-                                        type="button"
-                                        className="withdraw-history-copy-btn"
-                                        onClick={() => copyText("TX Hash", item.tx_hash)}
-                                      >
-                                        <CopyIcon size={16} />
-                                        <span>Copy</span>
-                                      </button>
-                                    </div>
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          </article>
-                        );
-                      })}
-                    </div>
-                  )}
-                </section>
                 {/* REPLACE WALLET */}
 
                 <button

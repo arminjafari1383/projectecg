@@ -5,13 +5,16 @@ import {
   Navigate,
 } from "react-router-dom";
 
+import SpotlightTour from "./components/SpotlightTour";
 import Navbar from "./components/Navbar";
-
+import OnboardingTour from "./components/OnboardingTour";
 import Wallet from "./pages/Wallet";
 import Referrals from "./pages/Referrals";
 import Purchase from "./pages/Purchase";
 import AboutUs from "./pages/Aboutus";
 import Timer from "./pages/Timer";
+import NftShop from "./pages/NftShop";
+import CryptoBackground from "./components/CryptoBackground";
 import AdminDashboard from "./pages/AdminDashboard";
 import Maintenance from "./pages/Maintenance";
 
@@ -45,6 +48,8 @@ function AppContent() {
         paddingBottom: 80,
       }}
     >
+      {/* one shared animated background for every page */}
+      <CryptoBackground />
 
       <Routes>
 
@@ -90,6 +95,12 @@ function AppContent() {
 
 
         <Route
+          path="/shop"
+          element={<NftShop />}
+        />
+
+
+        <Route
           path="/system-admin"
           element={<AdminDashboard />}
         />
@@ -109,6 +120,7 @@ function AppContent() {
 
 
       <Navbar />
+     <SpotlightTour />
 
     </div>
   );

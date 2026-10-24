@@ -1,10 +1,16 @@
 from django.urls import path
 
 from . import views
-from .admin_dashboard import admin_system_dashboard
+from .admin_dashboard import admin_system_dashboard,admin_review_purchase
 
 
 urlpatterns = [
+    path("social-rewards/", views.social_rewards, name="social_rewards"),
+    path("social-reward/", views.social_reward_claim, name="social_reward_claim"),
+    path("reward-cap/", views.reward_cap, name="reward_cap"),
+    path("purchase/local-internal-test/", views.local_internal_purchase, name="local_internal_purchase"),
+
+     path("wallet/transactions/",views.wallet_transactions,name="wallet_transactions",),
 
     # ========================================================
     # CONNECT WALLET
@@ -95,6 +101,10 @@ urlpatterns = [
         views.list_purchases_bnb,
         name="list_purchases_bnb",
     ),
+
+    
+
+
 
 
     # ========================================================
@@ -212,4 +222,30 @@ urlpatterns = [
         views.test_tick,
         name="test_tick",
     ),
+
+    path(
+        "vpn/status/",
+        views.vpn_status,
+        name="vpn_status",
+    ),
+
+    path(
+        "admin/purchases/<int:purchase_id>/review/",
+        admin_review_purchase,
+        name="admin-review-purchase",
+    ),
+
+    path("purchase/requests/", views.list_purchase_requests, name="list_purchase_requests"),
+    path("nft/catalog/", views.nft_catalog, name="nft_catalog"),
+    path("nft/orders/", views.nft_create_order, name="nft_create_order"),
+    path("nft/orders/<uuid:order_id>/", views.nft_order_status, name="nft_order_status"),
+    path("nft/test-purchase/",views.nft_local_test_purchase,name="nft_local_test_purchase"),
+   
+    path(
+    "nft/buy-internal/",
+    views.nft_buy_internal,
+    name="nft_buy_internal",
+),
+
+    
 ]

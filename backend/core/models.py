@@ -134,6 +134,13 @@ class Wallet(models.Model):
         auto_now=True
     )
 
+    # Internal TON balance
+
+    ton_balance = models.DecimalField(
+        max_digits=24,
+        decimal_places=9,
+        default=Decimal("0")
+    )
 
     def __str__(self):
         return f"{self.user} wallet"
@@ -344,6 +351,51 @@ class Purchase(models.Model):
             f"{self.output_amount}"
         )
 
+class PurchaseRequest(models.Model):
+    STATUS_PENDING = "PENDING"
+    STATUS_APPROVED = "APPROVED"
+    STATUS_REJECTD = "REJECTED"
+
+    STATUS_CHOICES = (
+        (STATUS_PENDING,"Pending"),
+        (STATUS_APPROVED,"Approved"),
+        (STATUS_REJECTD,"Rejected"),
+    )
+
+    ASSET_CHOICES = (("ECG","ECG"),("USDT","USDT"))
+
+    user = models.ForeignKey(AppUser,on_delete=models.CASCADE,related_name="purchase_requests")
+    wallet_address = models.CharField(max_length=128)
+    merchant_address = models.CharField(max_length=128,blank=True,default="")
+    ton_amount = models.DecimalField(max_digits=30,decimal_places=8)
+    ton_usd_rate = models.DecimalField(max_digits=20,decimal_places=8)
+    output_asset = models.CharField(max_length=10,choices=ASSET_CHOICES,default="ECG")
+    network = models.CharField(max_length=10,default="-239")
+    receipt_hash = models.CharField(max_length=255,unique=True)
+    boc = models.TextField(blank=True,default="")
+    status = models.CharField(max_length=20,choices=STATUS_CHOICES,default=STATUS_PENDING,db_index=True)
+    purchase = models.OneToOneField(Purchase,null=True,blank=True,on_delete=models.SET_NULL,related_name="request")
+    reviewed_at = models.DateTimeField(null=True,blank=True)
+    review_note = models.CharField(max_length=255,blank=True,default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"#{self.pk} {self.ton_amount} TON {self.status}"
+    
+
+
+
+
+
+
+
+
+
+
+
 class PurchaseUSDT(models.Model):
     """خرید ECG با USDT (BEP-20)"""
     user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="purchases_usdt")
@@ -517,3 +569,317 @@ class ReferralLevel(models.Model):
 
     def __str__(self):
         return f"{self.user.wallet_address} referral"
+
+class PendingPurchase(models.Model):
+    STATUS_CHOISES = [
+        ("PENDING","Pending"),
+        ("APPROVED","Approved"),
+        ("REJECTED","Rejected"),
+    ]
+
+    user = models.ForeignKey(
+        AppUser,
+        on_delete=models.PROTECT,
+        related_name="pending_purchases"
+    )
+
+    wallet_address = models.CharField(
+        max_length=255
+    )
+    receipt_hash = models.CharField(
+        max_length=255,
+        unique=True
+    )
+
+    ton_amount = models.DecimalField(
+        max_digits=30,
+        decimal_places=8
+    )
+
+    output_asset = models.CharField(
+        max_length=10,
+        default="ECG"
+    )
+
+    status = models.CharField(
+        max_length=12,
+        choices=STATUS_CHOISES,
+        default="PENDING",
+        db_index=True
+    )
+
+    purchase = models.OneToOneField(
+        "Purchase",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="approval_request"
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    reviewed_at = models.DateTimeField(
+        null=True,
+        blank=True
+    )
+
+    def __str__(self):
+        return f"Purchase Request #{self.id} - {self.status}"
+
+
+class WalletTransaction(models.Model):
+    TYPE_CHOICES = [
+        ("topup","Top Up"),
+        ("withdraw","Withdrawal"),
+        ("swap","Swap"),
+        ("purchase","Purchase"),
+    ]
+
+    user = models.ForeignKey(
+        "AppUser",
+        on_delete=models.CASCADE,
+        related_name="wallet_transactions",
+    )
+
+    transaction_type = models.CharField(
+        max_length=20,
+        choices=TYPE_CHOICES,
+    )
+
+    amount = models.DecimalField(
+        max_digits=30,
+        decimal_places=9,
+
+    )
+
+    asset = models.CharField(max_length=10)
+
+    received_amount = models.DecimalField(
+        max_digits=30,
+        decimal_places=8,
+        null=True,
+        blank=True,
+    )
+
+    received_asset = models.CharField(
+        max_length=10,
+        blank=True,
+        default="",
+    )
+
+    status = models.CharField(
+        max_length=20,
+        default="PENIDNG",
+    )
+
+    tx_hash = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+    )
+
+    reference = models.CharField(
+        max_length=100,
+        unique=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.transaction_type} - {self.amount} {self.asset}"
+
+
+class TonDeposit(models.Model):
+    STATUS_CHOICES = [
+        ("pending","Pending"),
+        ("confirmed","Confirmed"),
+        ("failed","Failed"),
+    ]
+
+    user = models.ForeignKey(
+        AppUser,
+        on_delete=models.PROTECT,
+        related_name="ton_deposits"
+    )
+
+    amount = models.DecimalField(
+        max_digits=24,
+        decimal_places=9
+    )
+
+    reference = models.UUIDField(
+        default=uuid.uuid4,
+        unique=True,
+        editable=False
+    )
+
+    sender_address = models.CharField(
+        max_length=128
+    )
+
+    merchant_address = models.CharField(
+        max_length=128
+    )
+
+    tx_hash = models.CharField(
+        max_length=128,
+        null=True,
+        blank=True,
+        unique=True
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="pending"
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    confirmed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+
+    )
+
+    def __str__(self):
+        return(
+            f"{self.user_id} | "
+            f"{self.amount} TON | "
+            f"{self.status}"
+        )
+
+class LocalPurchaseInvoice(models.Model):
+    """LOCAL DEMO ONLY: not a real blockchain payment or approved investment."""
+    user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="local_purchase_invoices")
+    invoice_no = models.CharField(max_length=64, unique=True)
+    request_key = models.UUIDField(unique=True)
+    ton_amount = models.DecimalField(max_digits=24, decimal_places=9)
+    output_asset = models.CharField(max_length=10, choices=Purchase.ASSET_CHOICES)
+    status = models.CharField(max_length=20, default="LOCAL_DEMO")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
+class ReferralRewardCap(models.Model):
+    """Tracks the 10x referral reward cap in TON accounting units."""
+
+    user = models.OneToOneField(
+        AppUser,
+        on_delete=models.CASCADE,
+        related_name="referral_reward_cap",
+    )
+    personal_purchase_ton = models.DecimalField(
+        max_digits=24, decimal_places=9, default=Decimal("0")
+    )
+    cap_ton = models.DecimalField(
+        max_digits=24, decimal_places=9, default=Decimal("0")
+    )
+    used_ton = models.DecimalField(
+        max_digits=24, decimal_places=9, default=Decimal("0")
+    )
+    burned_ton = models.DecimalField(
+        max_digits=24, decimal_places=9, default=Decimal("0")
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Reward cap for user {self.user_id}"
+
+
+
+class NFTOrder(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_COMPLETED = "completed"
+    STATUS_REJECTED = "rejected"
+
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING,"Pending"),
+        (STATUS_COMPLETED,"Completed"),
+        (STATUS_REJECTED,"Rejected"),
+    ]
+
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+    )
+
+    user = models.ForeignKey(
+        AppUser,
+        on_delete=models.PROTECT,
+        related_name="nft_orders",
+    )
+
+    product_id = models.CharField(
+        max_length=32,
+        default="verdant",
+    )
+
+    quantity = models.PositiveSmallIntegerField()
+
+    usd_total = models.DecimalField(
+        max_digits=18,
+        decimal_places=2,
+
+    )
+
+    ton_usd_rate = models.DecimalField(
+        max_digits=20,
+        decimal_places=8,
+    )
+
+    ton_due = models.DecimalField(
+        max_digits=24,
+        decimal_places=9,
+    )
+
+    contact = models.CharField(
+        max_length=255,
+        blank=True,
+    )
+
+    status = models.CharField(
+        max_length=12,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDING,
+    )
+
+    payment_tx_hash = models.CharField(
+        max_length=255,
+        unique=True,
+        null=True,
+        blank=True,
+    )
+
+    verified_ton_paid = models.DecimalField(
+        max_digits=24,
+        decimal_places=9,
+        null=True,
+        blank=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    approved_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"NFT {self.product_id} x{self.quantity} {self.id}"

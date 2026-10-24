@@ -1,8 +1,8 @@
 # backend/core/admin.py
 
-from django.contrib import admin
-from .models import AppUser, Wallet, Ledger, Purchase, PurchaseUSDT, PurchaseBNB, WithdrawRequest, ReferralLevel,AssetBalance
-
+from django.contrib import admin,messages
+from .models import AppUser, Wallet, Ledger, Purchase, PurchaseUSDT, PurchaseBNB, WithdrawRequest, ReferralLevel,AssetBalance,NFTOrder
+from .services import approve_verified_nft_order
 # ==========================================
 # AppUser Admin
 # ==========================================
@@ -425,3 +425,76 @@ class ReferralLevelAdmin(admin.ModelAdmin):
             )
         }),
     )
+
+
+@admin.register(NFTOrder)
+class NFTOrderAdmin(admin.ModelAdmin):
+
+    list_display = (
+        "id",
+        "user",
+        "product_id",
+        "quantity",
+        "usd_total",
+        "ton_due",
+        "status",
+        "created_at",
+    )
+
+    list_filter = (
+        "status",
+        "product_id",
+    )
+
+    search_fields = (
+        "user__wallet_address",
+        "payment_tx_hash",
+    )
+
+    readonly_fields = (
+        "id",
+        "user",
+        "product_id",
+        "quantity",
+        "usd_total",
+        "ton_usd_rate",
+        "ton_due",
+        "contact",
+        "status",
+        "created_at",
+        "approved_at",
+    )
+
+    actions = ["confirm_verified_payments"]
+
+    @admin.action(
+        description="Approve verified NFT payments"
+    )
+    def confirm_verified_payments(
+        self, request, queryset
+    ):
+        for order in queryset:
+            try:
+                _, applied = approve_verified_nft_order(
+                    order.pk
+                )
+
+                if applied:
+                    self.message_user(
+                        request,
+                        f"NFT approved: {order.pk}",
+                        messages.SUCCESS,
+                    )
+                else:
+                    self.message_user(
+                        request,
+                        f"Already approved: {order.pk}",
+                        messages.WARNING,
+                    )
+
+            except Exception as exc:
+                self.message_user(
+                    request,
+                    f"Error: {exc}",
+                    messages.ERROR,
+                )

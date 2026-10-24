@@ -911,3 +911,56 @@ body,
 ::-webkit-scrollbar-thumb:hover {
   background: #60a5fa;
 }
+
+
+/* =========================
+   CHART SWITCHER
+========================= */
+
+.chart-switcher {
+  display: flex;
+  gap: 10px;
+  padding: 12px;
+  background: rgba(8, 18, 48, 0.8);
+}
+
+.chart-switch-btn {
+  flex: 1;
+  padding: 11px 15px;
+  border-radius: 10px;
+  border: 1px solid rgba(125, 211, 252, 0.15);
+  background: rgba(255, 255, 255, 0.04);
+  color: #94a3b8;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.chart-switch-btn:hover {
+  background: rgba(56, 189, 248, 0.1);
+  color: white;
+}
+
+.chart-switch-btn.active {
+  background: linear-gradient(
+    135deg,
+    #2563eb,
+    #38bdf8
+  );
+  color: white;
+  border-color: #38bdf8;
+  box-shadow: 0 0 18px rgba(56, 189, 248, 0.2);
+}
+
+@media (max-width: 480px) {
+  .chart-switcher {
+    padding: 10px;
+    gap: 8px;
+  }
+
+  .chart-switch-btn {
+    padding: 10px;
+    font-size: 13px;
+  }
+}

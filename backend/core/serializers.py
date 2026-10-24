@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import AppUser, Wallet, Purchase, WithdrawRequest,AssetBalance
+from .models import AppUser, Wallet, Purchase, WithdrawRequest,AssetBalance,PurchaseRequest
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -102,3 +102,14 @@ class WithdrawSerializer(serializers.ModelSerializer):
         if status_value in {"PAID", "SUCCESS", "COMPLETE", "COMPLETED"}:
             return obj.updated_at
         return None
+
+class PurchaseRequestSerializer(serializers.ModelSerializer):
+    invoice_no = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PurchaseRequest
+        fields = ["id","status","ton_amount","output_asset","ton_usd_rate","receipt_hash","invoice_no","review_note","created_at","reviewed_at"]
+        read_only_fields = fields
+
+    def get_invoice_no(self,obj):
+        return obj.purchase.invoice_no if obj.purchase_id else None

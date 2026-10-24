@@ -10,11 +10,19 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@ton/core": "^0.63.1",
     "@tonconnect/ui-react": "^2.3.1",
     "axios": "^1.13.2",
+    "buffer": "^6.0.3",
+    "driver.js": "^1.9.0",
+    "i18next": "^26.4.2",
+    "monetag-tg-sdk": "^1.0.4",
+    "process": "^0.11.10",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-router-dom": "^7.11.0"
+    "react-i18next": "^17.0.15",
+    "react-router-dom": "^7.11.0",
+    "vite-plugin-node-polyfills": "^0.28.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",

@@ -46,6 +46,8 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(false);
   const [copiedAdminText, setCopiedAdminText] = useState("");
   const [completingWithdrawalId, setCompletingWithdrawalId] = useState(null);
+  const [reviewingPurchaseId, setReviewingPurchaseId] = useState(null);
+
 
   const clearAdminSession = useCallback(() => {
     sessionStorage.removeItem("admin_session_token");
@@ -166,6 +168,56 @@ export default function AdminDashboard() {
 
     window.setTimeout(() => setCopiedAdminText(""), 1800);
   }, []);
+
+  const reviewPurchase = async (purchase,action) => {
+    if (!purchase?.id || reviewingPurchaseId) return;
+
+    if (!adminSession) {
+      setError("Admin session expired.");
+      return;
+    }
+    
+    const confirmed = window.confirm(
+      action === "APPROVE"
+      ? `Approve purchase request #${purchase.id}?`
+      : `REJECT purchase request #${purchase.id}?`
+    );
+
+    if (!confirmed) return;
+    setReviewingPurchaseId(purchase.id);
+    setError("");
+
+    try {
+      await api.post(
+        `/admin/purchases/${purchase.id}/review/`,
+        { action },
+        {
+          headers:{
+            "X-Admin-Session": adminSession,
+          },
+        }
+      );
+      
+
+      await refreshDashboard();
+      
+    }catch (err) {
+      console.error("Purchase review error:",err);
+      if (err?.response?.status === 403){
+        clearAdminSession();
+        setError("Admin session expired. Please sing in again");
+        return;
+      }
+      if (err?.response?.status === 409){
+        setError(getErrorText(err,"This request was already reviewed."));
+        await refreshDashboard();
+        return;
+      }
+      setError(getErrorText(err,"This request was already reviewed."));
+    }finally{
+      setReviewingPurchaseId(null);
+    }
+  };
 
   const completeWithdrawal = useCallback(
     async (withdrawal) => {
@@ -331,6 +383,7 @@ export default function AdminDashboard() {
         <Stat label="Total users" value={number(summary.total_users)} />
         <Stat label="Active users" value={number(summary.active_users)} />
         <Stat label="Total purchases" value={number(summary.total_purchases)} />
+        <Stat label="Pending purchases" value={number(summary.pending_purchses)}/>
         <Stat label="TON received" value={`${number(summary.total_ton_received)} TON`} />
         <Stat label="Total USD value" value={`$${number(summary.total_usd_value)}`} />
 
@@ -361,6 +414,110 @@ export default function AdminDashboard() {
           danger={Boolean(treasury.low_balance)}
         />
       </section>
+
+            <section className="admin-panel">
+        <h2>Purchase Requests</h2>
+
+        <div style={{ overflowX: "auto" }}>
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>User</th>
+                <th>Wallet</th>
+                <th>TON</th>
+                <th>USD</th>
+                <th>Asset</th>
+                <th>Receipt</th>
+                <th>Date</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {(data.purchase_requests || []).map((item) => (
+                <tr key={item.id}>
+                  <td>{item.id}</td>
+                  <td>{item.username || item.telegram_id}</td>
+                  <td title={item.wallet_address}>
+                    {short(item.wallet_address)}
+                    {item.wallet_address && (
+                      <button
+                        type="button"
+                        style={{ marginLeft: 6 }}
+                        onClick={() => copyAdminValue("Wallet", item.wallet_address)}
+                      >
+                        Copy
+                      </button>
+                    )}
+                  </td>
+                  <td>{number(item.ton_amount)}</td>
+                  <td>${number(item.usd_value)}</td>
+                  <td>{item.output_asset}</td>
+                  <td>
+                    <button
+                      type="button"
+                      title={item.receipt_hash}
+                      onClick={() => copyAdminValue("Receipt", item.receipt_hash)}
+                    >
+                      Copy hash
+                    </button>
+                    {item.boc && (
+                      <button
+                        type="button"
+                        style={{ marginLeft: 6 }}
+                        onClick={() => copyAdminValue("BOC", item.boc)}
+                      >
+                        Copy BOC
+                      </button>
+                    )}
+                  </td>
+                  <td>{formatCell("created_at", item.created_at)}</td>
+                  <td>
+                    <strong>
+                      {item.status === "APPROVED" && item.invoice_no
+                        ? `APPROVED · #${item.invoice_no}`
+                        : item.status}
+                    </strong>
+                  </td>
+                  <td>
+                    {item.status === "PENDING" ? (
+                      <div className="admin-review-actions">
+                        <button
+                          type="button"
+                          className="admin-approve-btn"
+                          disabled={reviewingPurchaseId !== null}
+                          onClick={() => reviewPurchase(item, "APPROVE")}
+                        >
+                          {reviewingPurchaseId === item.id ? "Processing..." : "✓ Approve"}
+                        </button>
+                        <button
+                          type="button"
+                          className="admin-reject-btn"
+                          disabled={reviewingPurchaseId !== null}
+                          onClick={() => reviewPurchase(item, "REJECT")}
+                        >
+                          ✕ Reject
+                        </button>
+                      </div>
+                    ) : (
+                      <span>
+                        {item.reviewed_at ? formatCell("created_at", item.reviewed_at) : "—"}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {!(data.purchase_requests || []).length && (
+            <p className="empty">No purchase requests</p>
+          )}
+        </div>
+      </section>
+
 
       <section className="admin-panel">
         <div className="admin-tools">

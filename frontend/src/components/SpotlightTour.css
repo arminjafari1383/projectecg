@@ -1,0 +1,16 @@
+.driver-active-element {
+  transform: scale(1.2) !important;
+  transition: transform 0.3s ease !important;
+  z-index: 10001 !important;
+}
+
+.driver-popover {
+  border-radius: 16px !important;
+  padding: 18px !important;
+  max-width: 300px !important;
+}
+
+.driver-popover-description {
+  line-height: 1.8 !important;
+  font-size: 14px !important;
+}

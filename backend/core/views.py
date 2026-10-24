@@ -8,7 +8,7 @@ import uuid
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
-from decimal import Decimal, ROUND_UP
+from decimal import Decimal, ROUND_UP,InvalidOperation
 from datetime import timedelta
 from django.utils import timezone
 from django.http import JsonResponse
@@ -24,6 +24,11 @@ from .services import (
     register_purchase_bnb, # save buy by bnb
     reconcile_existing_referral_join_rewards,#for edit and sync referral reward history
     release_matured_purchase_profits,# this function for free profit lock
+    create_purchase_request,
+    approve_purchase_request,
+    reject_purchase_request,
+    PurchaseRequestError,
+    approve_verified_nft_order,
 )
 from .referral_utils import normalize_inviter_code # this file for normalize referral link
 from .models import (
@@ -35,10 +40,17 @@ from .models import (
     WithdrawRequest, # withdraw requests
     ReferralLevel, # show sturcture levels
     PurchaseUSDT,
-    PurchaseBNB
+    PurchaseBNB,
+    PendingPurchase,
+    PurchaseRequest,
+    WalletTransaction,
+    TonDeposit,
+    LocalPurchaseInvoice,
+    ReferralRewardCap,
+    NFTOrder,
 )
 # create serilizer for api django
-from .serializers import WalletSerializer, PurchaseSerializer, UserSerializer
+from .serializers import WalletSerializer, PurchaseSerializer, UserSerializer,PurchaseRequestSerializer
 
 # transaction for databasetranstions and integrityerror for error unique constraint
 from django.db import transaction, IntegrityError
@@ -1272,6 +1284,9 @@ def wallet_view(request, wallet_address):
         "mining_days": mining_days,
         "total_earned": str(total_earned),
         "total_withdrawn": str(total_withdrawn),
+
+
+        "ton_balance":str(wallet.ton_balance),
     }
 
     return Response(payload, status=status.HTTP_200_OK)
@@ -1415,127 +1430,78 @@ def create_purchase(request):
     )
 
     try:
-        logger.info(
-            "[PURCHASE_TELEGRAM_FIRST] telegram_id=%s user=%s wallet=%s amount=%s receipt=%s",
-            telegram_id,
-            user.id,
-            connected_wallet,
-            ton_amount,
-            wallet_receipt_hash,
-        )
-
-        # Idempotency: one signed BOC can produce only one purchase.
-        existing = (
-            Purchase.objects
-            .filter(ton_tx_hash=wallet_receipt_hash)
-            .first()
-        )
+        # Check previously completed purchase
+        existing = Purchase.objects.filter(
+            ton_tx_hash = wallet_receipt_hash
+        ).first()
 
         if existing:
             if existing.user_id != user.id:
                 return Response(
-                    {
-                        "error":
-                            "This wallet receipt is already registered to another user."
-                    },
-                    status=status.HTTP_409_CONFLICT,
+                    {"error":"Receipt belongs to another user"},
+                    status=409,
                 )
 
-            serialized = dict(
-                PurchaseSerializer(existing).data
-            )
-            serialized["created_at"] = existing.created_at
-            serialized["lock_period_days"] = 365
-            serialized["payment_status"] = "WALLET_CONFIRMED"
-            serialized["blockchain_verified"] = False
-
-            return Response(
-                {
-                    "status": "confirmed",
-                    "confirmation_source": "wallet",
-                    "blockchain_verified": False,
-                    "already_registered": True,
-                    "telegram_id": telegram_id,
-                    "ton_tx_hash": wallet_receipt_hash,
-                    "wallet_receipt_hash": wallet_receipt_hash,
-                    "message_hash": wallet_receipt_hash,
-                    "gram_address": gram_address,
-                    "gram_amount": str(gram_nano),
-                    "ton_amount": str(ton_amount),
-                    "invoice": serialized,
-                },
-                status=status.HTTP_200_OK,
-            )
-
+            return Response({
+                "status":"approved",
+                "purchase_id":existing.id,
+                "invoice":PurchaseSerializer(existing).data,
+            }, status=200)
+        # Store request only, without invoice
         try:
-            purchase = register_purchase(
-                user,
-                ton_amount,
-                wallet_receipt_hash,
+            pending,created = create_purchase_request(
+                user=user,
+                ton_amount=ton_amount,
+                receipt_hash=wallet_receipt_hash,
+                wallet_address=connected_wallet,
                 output_asset=output_asset,
+                merchant_address=gram_address,
+                network=network,
+                boc=boc,
             )
         except ValueError as exc:
-            if "TX already registered" not in str(exc):
-                raise
-
-            purchase = (
-                Purchase.objects
-                .filter(ton_tx_hash=wallet_receipt_hash)
-                .first()
+            return Response({"error":str(exc)},status=400)
+        if pending.user_id != user.id:
+            return Response(
+                {"error":"Receipt belongs to another user"},
+                status=409,
             )
-
-            if not purchase or purchase.user_id != user.id:
-                raise
-
-        serialized = dict(
-            PurchaseSerializer(purchase).data
-        )
-        serialized["created_at"] = purchase.created_at
-        serialized["lock_period_days"] = 365
-        serialized["payment_status"] = "WALLET_CONFIRMED"
-        serialized["blockchain_verified"] = False
-
-        logger.info(
-            "✅ TELEGRAM-FIRST PURCHASE CREATED invoice=%s user=%s telegram_id=%s",
-            purchase.invoice_no,
-            user.id,
-            telegram_id,
-        )
-
         return Response(
             {
-                "status": "confirmed",
-                "confirmation_source": "wallet",
-                "blockchain_verified": False,
-                "already_registered": False,
-                "telegram_id": telegram_id,
-                "ton_tx_hash": wallet_receipt_hash,
-                "wallet_receipt_hash": wallet_receipt_hash,
-                "message_hash": wallet_receipt_hash,
-                "gram_address": gram_address,
-                "gram_amount": str(gram_nano),
-                "ton_amount": str(ton_amount),
-                "invoice": serialized,
+                "status":"pending",
+                "confirmation_source":"admin_review",
+                "blockchain_verified":False,
+                "already_registered": not created,
+                "telegram_id":telegram_id,
+                "ton_tx_hash":wallet_receipt_hash,
+                "wallet_receipt_hash":wallet_receipt_hash,
+                "gram_address":gram_address,
+                "gram_amount":str(gram_nano),
+                "ton_amount":str(ton_amount),
+                "request":PurchaseRequestSerializer(pending).data,
             },
-            status=status.HTTP_201_CREATED,
+            status=201 if created else 200,
         )
 
-    except OperationalError as exc:
-        logger.exception(
-            "SQLite/database error during Telegram-first purchase"
-        )
+    except IntegrityError:
+        logger.exception("Pending purchase conflict")
         return Response(
-            {"error": str(exc)},
-            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            {"error":"Purchase request conflict"},
+            status=409,
         )
 
-    except Exception as exc:
-        logger.exception(
-            "Telegram-first immediate purchase error"
-        )
+    except OperationalError:
+        logger.exception("Pending purchase database error")
         return Response(
-            {"error": str(exc)},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            {"error":"Database temporarily unavailable"},
+            status=503,
+        )
+
+    except Exception:
+        logger.exception("Pending purchase registration failed")
+        return Response(
+            {"error":"Unable to register purchase request"},
+            status=500,
         )
 
 
@@ -1612,6 +1578,25 @@ def list_purchases(request):
         serialized,
         status=status.HTTP_200_OK,
     )
+
+
+@api_view(["GET"])
+def list_purchase_requests(request):
+    raw = request.query_params.get("telegram_id") or request.headers.get("X-Telegram-Id")
+    try:
+        telegram_id = int(raw)
+        if telegram_id <= 0:
+            raise ValueError()
+    except (TypeError,ValueError):
+        return Response({"error":"Invalid telegram_id"},status=400)
+    user = AppUser.objects.filter(telegram_id=telegram_id).first()
+    if not user:
+        return Response([])
+
+    rows = user.purchase_requests.select_related("purchase").order_by("-created_at")[:50]
+    return Response(PurchaseRequestSerializer(rows,many=True).data)
+
+
 
 
 @api_view(["POST"])
@@ -2250,6 +2235,41 @@ def admin_complete_withdraw(request, withdraw_id):
     })
 
 
+@api_view(["POST"])
+def admin_review_purchase(request,request_id):
+    if not _verify_admin_session(request):
+        return Response({"error":"Admin session is missing or expired."},status=403)
+
+    action = str(request.data.get("action","") or "").strip().upper()
+
+    if action not in {"APPROVE","REJECT"}:
+        return Response({"error":"action must be APPROVE or REJECT."},status=400)
+
+    try:
+        if action == "APPROVE":
+            req,already = approve_purchase_request(request_id)
+        else:
+            req,already = reject_purchase_request(
+                request_id,note=request.data.get("note","")
+            )
+    except PurchaseRequestError as exc:
+        return Response({"error":str(exc),"code":exc.code},status=exc.http_status)
+    except Exception as exc:
+        logger.exception("Purchase review failed id =%s",request_id)
+        return Response({"error":str(exc)},status=500)
+    req = PurchaseRequest.objects.select_related("purchase").get(pk=req.pk)
+    return Response({
+        "success":True,
+        "already_reviewed":already,
+        "request":PurchaseRequestSerializer(req).data,
+    })
+
+
+
+
+
+
+
 # ============================================================
 # TELEGRAM-FIRST IDENTITY HELPERS
 # ============================================================
@@ -2597,7 +2617,7 @@ def referral_count(request):
 # =======================
 
 HOURLY_REWARD = Decimal("100")
-COOLDOWN = timedelta(hours=1)
+COOLDOWN = timedelta(seconds=30)
 
 
 def _hourly_reward_stats(user):
@@ -3577,3 +3597,966 @@ def create_ton_transaction(request):
             },
             status=500,
         )
+
+
+
+@api_view(["POST"])
+def create_ton_topup(request):
+    try:
+        wallet_address = str(
+            request.data.get("wallet_address") or ""
+        ).strip()
+
+        try:
+            amount = Decimal(
+                str(request.data.get("amount") or "")
+            )
+
+        except (InvalidOperation,ValueError):
+            return Response(
+                {"error":"Invalid TON amount"},
+                status=400
+            )
+        if (
+            not amount.is_finite()
+            or amount <= 0
+            or amount.as_tuple().exponent < -9
+            or amount >= Decimal("1000000000000000")
+        ):
+            return Response(
+                {"error":"Invalid TON amount"},
+                status=400
+            )
+
+        if not wallet_address:
+            return Response(
+                {"error":"Wallet address is required"},
+                status=400
+            )
+        merchant_address = str(
+            settings.GRAM_MERCHANT_ADDRESS or ""
+        ).strip()
+
+        if not merchant_address:
+            return Response(
+                {"error":"Merchant wallet not configured"},
+                status=500
+            )
+
+        try:
+            sender_raw = _ton_address_to_raw(
+                wallet_address
+            )
+
+            merchant_raw = _ton_address_to_raw(
+                merchant_address
+            )
+
+        except ValueError:
+            return Response(
+                {"error":"Invalid TON address"},
+                status=400
+            )
+
+        if sender_raw == merchant_raw:
+            return Response(
+                {"error":"Sender and merchant must differ"},
+                status=400
+            )
+
+        user = None
+        for candidate in AppUser.objects.filter(
+            wallet_address__isnull = False
+        ):
+
+            try:
+                if _ton_address_to_raw(
+                    candidate.wallet_address
+                ) == sender_raw:
+                    user = candidate
+                    break
+
+            except ValueError:
+                continue
+
+        if user is None:
+            return Response(
+                {"error":"Connected wallet not found"},
+                status=404
+            )
+
+        nano_amount = int(
+            amount * Decimal("1000000000")
+        )
+
+        deposit = TonDeposit.objects.create(
+            user = user,
+            amount = amount,
+            sender_address = wallet_address,
+            merchant_address=merchant_address,
+            status="pending"
+        )
+
+        comment = f"TOPUP:{deposit.reference}"
+
+        payload = base64.b64encode(
+            struct.pack("<I",0) +
+            comment.encode("utf-8")
+        ).decode("ascii")
+
+        return Response({
+            "status":"pending",
+            "deposit_id":deposit.id,
+            "reference":str(deposit.reference),
+            "transaction":{
+                "validUntil":int(time.time()) + 300,
+                "message":[{
+                    "address": merchant_address,
+                    "amount":str(nano_amount),
+                    "payload":payload
+                }]
+            }
+        },status=201)
+
+    except Exception:
+        logger.exception("TON TOPUP CREATE ERROR")
+        return Response(
+            {"error":"Could not create Top Up"},
+            status=500
+        )
+
+
+# =====================================
+# FREE VPN REWARD
+# =====================================
+
+
+VPN_REQUIRED_INVITES = 5
+
+@api_view(["GET"])
+def vpn_status(request):
+    try:
+        user,_identity,_meta = (
+            _get_or_create_telegram_user(request)
+        )
+
+        # Count direct referrals from database
+        direct_invites = user.invitees.count()
+
+        #Unlock only after 5 direct invites
+        is_unlocked = (
+            direct_invites >= VPN_REQUIRED_INVITES
+        )
+
+        return Response({
+            "success":True,
+            "direct_invites":direct_invites,
+            "required_invites":VPN_REQUIRED_INVITES,
+            "remaining_invites":max(
+                0,
+                VPN_REQUIRED_INVITES - direct_invites
+            ),
+            "progress":min(
+                100,
+                int(
+                    direct_invites
+                    / VPN_REQUIRED_INVITES
+                    * 100
+                )
+            ),
+            "unlocked":is_unlocked,
+            "status":(
+                "unlocked"
+                if is_unlocked
+                else "locked"
+            )
+        }, status=200)
+    except Exception:
+        logger.exception(
+            "VPN status check failed"
+        )
+
+        return Response(
+            {"error":"Unable to load VPN status"},
+            status=500
+        )
+
+# ============================================
+# WALLET TRANSACTIONS API
+# ============================================
+
+@api_view(["GET"])
+def wallet_transactions(request):
+    wallet_address = str(
+        request.query_params.get("wallet_address","")
+    ).strip()
+
+    if not wallet_address:
+        return Response(
+            {"error":"wallet_address is required"},
+            status=400,
+        )
+
+    user = AppUser.objects.filter(
+        wallet_address=wallet_address
+    ).first()
+
+    if not user:
+        return Response([],status=200)
+
+    transaction = WalletTransaction.objects.filter(
+        user=user
+    ).order_by("-created_at")[:100]
+
+    result = []
+
+    for tx in transaction:
+        result.append({
+            "id":tx.id,
+            "type":tx.transaction_type,
+            "title":tx.get_transaction_type_display(),
+            "amount":str(tx.amount),
+            "asset":tx.asset,
+            "received_amount":(
+                str(tx.received_amount)
+                if tx.received_amount is not None
+                else None
+
+            ),
+            "received_asset":tx.received_asset,
+            "status":tx.status,
+            "tx_hash":tx.tx_hash,
+            "data":tx.created_at.isoformat(),
+            "date":tx.created_at.isoformat(),
+        })
+
+    return Response(result)
+
+
+# ============================================================
+# REWARD CAP — read-only actual reward-cap numbers
+# ============================================================
+@api_view(["GET"])
+def reward_cap(request):
+    raw_telegram_id = str(request.query_params.get("telegram_id", "") or "").strip()
+    wallet_address = str(request.query_params.get("wallet_address", "") or "").strip()
+
+    if raw_telegram_id:
+        try:
+            telegram_id = int(raw_telegram_id)
+            if telegram_id <= 0:
+                raise ValueError()
+        except (TypeError, ValueError):
+            return Response({"error": "Invalid telegram_id"}, status=400)
+        user = AppUser.objects.filter(telegram_id=telegram_id).first()
+    elif wallet_address:
+        user = AppUser.objects.filter(wallet_address=wallet_address).first()
+    else:
+        return Response({"error": "telegram_id or wallet_address is required"}, status=400)
+
+    if user is None:
+        return Response({"error": "User not found"}, status=404)
+
+    # Do not create/update accounting records on a GET request.
+    cap = ReferralRewardCap.objects.filter(user=user).first()
+    personal = Decimal(str(cap.personal_purchase_ton or 0)) if cap else Decimal("0")
+    maximum = Decimal(str(cap.cap_ton or 0)) if cap else Decimal("0")
+    used = Decimal(str(cap.used_ton or 0)) if cap else Decimal("0")
+    burned = Decimal(str(cap.burned_ton or 0)) if cap else Decimal("0")
+    remaining = max(Decimal("0"), maximum - used)
+    progress = (min(Decimal("100"), used * Decimal("100") / maximum)
+                if maximum > 0 else Decimal("0"))
+
+    return Response({
+        "telegram_id": user.telegram_id,
+        "personal_purchase_ton": str(personal),
+        "cap_ton": str(maximum),
+        "used_ton": str(used),
+        "burned_ton": str(burned),
+        "remaining_ton": str(remaining),
+        "progress_percent": float(progress),
+        "multiplier": 10,
+        "status": ("CAP_REACHED" if maximum > 0 and remaining == 0
+                   else "ACTIVE" if maximum > 0 else "NO_PURCHASE"),
+        # Alternative naming for simple React clients (all TON units).
+        "personal_purchase": str(personal),
+        "income_cap": str(maximum),
+        "rewards_received": str(used),
+        "remaining": str(remaining),
+        "burned_rewards": str(burned),
+    }, status=200)
+
+
+# ============================================================
+# LOCAL INTERNAL TON PURCHASE TEST — DEBUG + LOOPBACK ONLY
+# This creates a demo receipt and deducts internal TON atomically.
+# It NEVER creates a real Purchase, pays on-chain, or awards profits.
+# ============================================================
+@api_view(["GET", "POST"])
+def local_internal_purchase(request):
+    from django.db.models import F
+    from django.http import HttpResponse
+
+    host = request.get_host().split(":")[0].lower()
+    ip = request.META.get("REMOTE_ADDR", "")
+    if not settings.DEBUG or host not in ("localhost", "127.0.0.1") or ip not in ("127.0.0.1", "::1"):
+        return Response({"error": "Local test endpoint disabled"}, status=404)
+
+    address = str(request.data.get("wallet_address", "") if request.method == "POST" else request.query_params.get("wallet_address", "")).strip()
+    # Local demonstration only; this is NOT production authentication.
+    user = AppUser.objects.filter(wallet_address=address).first() if address else None
+    if user is None:
+        return Response({"error": "Wallet not found in local database"}, status=404)
+
+    if request.method == "GET":
+        balance = Wallet.objects.filter(user=user).values_list("ton_balance", flat=True).first()
+        invoices = LocalPurchaseInvoice.objects.filter(user=user)[:50]
+        return Response({
+            "ton_balance": str(balance if balance is not None else Decimal("0")),
+            "invoices": [{
+                "invoice_no": x.invoice_no, "ton_amount": str(x.ton_amount),
+                "output_asset": x.output_asset, "status": x.status,
+                "created_at": x.created_at.isoformat(),
+            } for x in invoices],
+        })
+
+    raw_amount = str(request.data.get("amount", "")).strip()
+    try:
+        amount = Decimal(raw_amount)
+    except (InvalidOperation, ValueError):
+        return Response({"error": "Invalid TON amount"}, status=400)
+    if not amount.is_finite() or amount <= 0 or amount > Decimal("1000000") or amount.as_tuple().exponent < -9:
+        return Response({"error": "Enter a positive TON amount with at most 9 decimals"}, status=400)
+    asset = str(request.data.get("output_asset", "")).upper()
+    if asset not in ("ECG", "USDT"):
+        return Response({"error": "Invalid output asset"}, status=400)
+    try:
+        request_key = uuid.UUID(str(request.data.get("request_key", "")))
+    except (ValueError, AttributeError):
+        return Response({"error": "Valid request_key UUID required"}, status=400)
+
+    with transaction.atomic():
+        existing = LocalPurchaseInvoice.objects.filter(request_key=request_key).first()
+        if existing:
+            if existing.user_id != user.pk or existing.ton_amount != amount or existing.output_asset != asset:
+                return Response({"error": "Request key already used"}, status=409)
+            balance = Wallet.objects.filter(user=user).values_list("ton_balance", flat=True).first()
+            return Response({"status": "LOCAL_DEMO", "invoice_no": existing.invoice_no,
+                             "ton_balance": str(balance), "already_processed": True})
+        wallet, _ = Wallet.objects.get_or_create(user=user)
+        # Conditional SQL UPDATE prevents negative balance even with concurrent requests.
+        updated = Wallet.objects.filter(pk=wallet.pk, ton_balance__gte=amount).update(ton_balance=F("ton_balance") - amount)
+        if updated != 1:
+            return Response({"error": "Insufficient internal TON balance"}, status=409)
+        invoice_no = "DEMO-" + uuid.uuid4().hex[:20].upper()
+        invoice = LocalPurchaseInvoice.objects.create(
+            user=user, invoice_no=invoice_no, request_key=request_key,
+            ton_amount=amount, output_asset=asset,
+        )
+        WalletTransaction.objects.create(
+            user=user, transaction_type="purchase", amount=amount,
+            asset="TON", received_amount=None, received_asset=asset,
+            status="LOCAL_DEMO", reference=invoice_no,
+        )
+        wallet.refresh_from_db(fields=["ton_balance"])
+    return Response({"status": "LOCAL_DEMO", "invoice_no": invoice.invoice_no,
+                     "ton_balance": str(wallet.ton_balance), "already_processed": False}, status=201)
+
+# ============================================================
+# SOCIAL REWARDS — LOCAL DEVELOPMENT DEMO
+# Click-to-claim is not proof of a social follow/subscription.
+# Real credits MUST require a verified activity in production.
+# ============================================================
+SOCIAL_TASKS = {"telegram", "instagram", "youtube"}
+SOCIAL_DEMO_REWARD = Decimal("1000")
+
+
+def _social_claim_is_local(request):
+    host = request.get_host().split(":")[0].lower()
+    ip = request.META.get("REMOTE_ADDR", "")
+    return (
+        settings.DEBUG
+        and host in {"localhost", "127.0.0.1"}
+        and ip in {"127.0.0.1", "::1"}
+    )
+
+
+def _social_user(request):
+    params = request.data if request.method == "POST" else request.query_params
+    address = str(params.get("wallet_address") or "").strip()
+    telegram_id = str(params.get("telegram_id") or "").strip()
+
+    if address:
+        user = AppUser.objects.filter(wallet_address=address).first()
+        if user and telegram_id and str(user.telegram_id or "") != telegram_id:
+            return None
+        return user
+    if telegram_id:
+        try:
+            parsed_id = int(telegram_id)
+            if parsed_id <= 0:
+                return None
+        except (TypeError, ValueError):
+            return None
+        return AppUser.objects.filter(telegram_id=parsed_id).first()
+    return None
+
+
+def _social_claims(user):
+    done = set()
+    for entry in Ledger.objects.filter(user=user, typ="SOCIAL_REWARD").only("meta"):
+        meta = entry.meta or {}
+        if isinstance(meta, dict):
+            platform = str(meta.get("platform") or "").strip().lower()
+            if platform in SOCIAL_TASKS and (
+                meta.get("verified") is True or meta.get("local_demo") is True
+            ):
+                done.add(platform)
+    return sorted(done)
+
+
+@api_view(["GET"])
+def social_rewards(request):
+    # Do not leak user balances through an unauthenticated production endpoint.
+    if not _social_claim_is_local(request):
+        return Response({"error": "Local social demo disabled"}, status=403)
+    user = _social_user(request)
+    if not user:
+        return Response({"error": "Local wallet/account not found"}, status=404)
+    epl = AssetBalance.objects.filter(user=user, asset="EPL").first()
+    claimed = _social_claims(user)
+    return Response({
+        "climed": claimed,  # legacy key used by Aboutus.jsx
+        "claimed": claimed,
+        "reward_enabled": True,
+        "local_demo": True,
+        "epl_balance": str(epl.available if epl else Decimal("0")),
+    })
+
+
+@api_view(["POST"])
+def social_reward_claim(request):
+    if not _social_claim_is_local(request):
+        return Response({"error": "Local social demo disabled"}, status=403)
+    platform = str(request.data.get("platform") or "").strip().lower()
+    if platform not in SOCIAL_TASKS:
+        return Response({"error": "Invalid social platform"}, status=400)
+    user = _social_user(request)
+    if not user:
+        return Response({"error": "Local wallet/account not found"}, status=404)
+
+    from django.db.models import F
+    with transaction.atomic():
+        # User-level row lock serializes different calls for the same user on
+        # databases supporting SELECT FOR UPDATE (SQLite uses write locks).
+        user = AppUser.objects.select_for_update().get(pk=user.pk)
+        claimed = _social_claims(user)
+        if platform in claimed:
+            epl = AssetBalance.objects.filter(user=user, asset="EPL").first()
+            return Response({
+                "status": "already_claimed", "platform": platform,
+                "climed": claimed,
+                "epl_balance": str(epl.available if epl else Decimal("0")),
+            })
+
+        epl, _ = AssetBalance.objects.get_or_create(user=user, asset="EPL")
+        AssetBalance.objects.filter(pk=epl.pk).update(
+            available=F("available") + SOCIAL_DEMO_REWARD,
+            total_earned=F("total_earned") + SOCIAL_DEMO_REWARD,
+        )
+        Ledger.objects.create(
+            user=user, typ="SOCIAL_REWARD", amount=SOCIAL_DEMO_REWARD,
+            meta={
+                "platform": platform, "asset": "EPL",
+                "local_demo": True, "verified": False,
+                "reward_kind": "local_click_test",
+            },
+        )
+        epl.refresh_from_db(fields=["available"])
+        claimed = _social_claims(user)
+    return Response({
+        "status": "claimed", "platform": platform,
+        "reward_amount": str(SOCIAL_DEMO_REWARD),
+        "climed": claimed, "epl_balance": str(epl.available),
+        "local_demo": True,
+    }, status=201)
+
+@api_view(["GET"])
+def nft_catalog(request):
+    sold = (
+        NFTOrder.objects.filter(
+            product_id = "verdant",
+            status=NFTOrder.STATUS_COMPLETED,
+        )
+        .aggregate(total=Sum("quantity"))["total"]
+        or 0
+    )
+
+    reserved = (
+        NFTOrder.objects.filter(
+            product_id = "verdant",
+            status=NFTOrder.STATUS_PENDING,
+        )
+        .aggregate(total=Sum("quantity"))["total"]
+        or 0
+    )
+
+    return Response({
+        "verdant": {
+            "initial_sold":44,
+            "sold_after_launch":sold,
+            "reserved":reserved,
+            "available":max(
+                0,200 - 44 - sold - reserved
+            ),
+        }
+    })
+
+
+@api_view(["POST"])
+def nft_create_order(request):
+    wallet_address = str(
+        request.data.get("wallet_address") or ""
+    ).strip()
+
+    product_id = str(
+        request.data.get("product_id") or ""
+    ).strip()
+
+    qty = request.data.get("quantity")
+
+    if (
+        product_id != "verdant"
+        or type(qty) is not int
+        or not (1 <= qty <= 5)
+    ):
+        return Response(
+            {"error": "Invalid NFT or quantity"},
+            status=400,
+        )
+
+    user = AppUser.objects.filter(
+        wallet_address=wallet_address
+    ).first()
+
+    if user is None:
+        return Response(
+            {"error": "Wallet not found"},
+            status=400,
+        )
+
+    with transaction.atomic():
+        sold = (
+            NFTOrder.objects.filter(
+                product_id="verdant",
+                status=NFTOrder.STATUS_COMPLETED,
+            )
+            .aggregate(total=Sum("quantity"))["total"]
+            or 0
+        )
+
+        pending = (
+            NFTOrder.objects.filter(
+                product_id="verdant",
+                status=NFTOrder.STATUS_PENDING,
+            )
+            .aggregate(total=Sum("quantity"))["total"]
+            or 0
+        )
+
+        if 44 + sold + pending + qty > 200:
+            return Response(
+                {"error": "NFT sold out or reserved"},
+                status=409,
+            )
+
+        try:
+            rate = Decimal(
+                str(fetch_ton_usd_rate())
+            )
+
+            if rate <= 0 or not rate.is_finite():
+                raise ValueError("Invalid TON rate")
+
+            usd_total = Decimal("50.00") * qty
+
+            ton_due = (
+                usd_total / rate
+            ).quantize(
+                Decimal("0.000000001"),
+                rounding=ROUND_UP,
+            )
+
+        except Exception:
+            return Response(
+                {"error": "TON price unavailable"},
+                status=503,
+            )
+
+        order = NFTOrder.objects.create(
+            user=user,
+            product_id=product_id,
+            quantity=qty,
+            usd_total=usd_total,
+            ton_usd_rate=rate,
+            ton_due=ton_due,
+            contact=str(
+                request.data.get("contact") or ""
+            )[:255],
+        )
+
+    return Response({
+        "id": str(order.id),
+        "status": order.status,
+        "ton_due": str(order.ton_due),
+        "usd_total": str(order.usd_total),
+        "quantity": order.quantity,
+        "created_at": order.created_at.isoformat(),
+    }, status=201)
+
+
+@api_view(["GET"])
+def nft_order_status(request, order_id):
+    from .models import NFTOrder
+
+    order = NFTOrder.objects.filter(
+        pk=order_id
+    ).first()
+
+    if order is None:
+        return Response(
+            {"error": "NFT order not found"},
+            status=404,
+        )
+
+    return Response({
+        "id": str(order.id),
+        "status": order.status,
+        "ton_due": str(order.ton_due),
+        "usd_total": str(order.usd_total),
+        "quantity": order.quantity,
+    })
+
+
+@api_view(["POST"])
+def nft_local_test_purchase(request):
+    host = request.get_host().split(":")[0].lower()
+    remote = request.META.get("REMOTE_ADDR","")
+
+    enabled = os.getenv(
+        "ENABLE_NFT_DEMO",""
+    ).lower() in {"1","true","yes"}
+
+    if not (
+        settings.DEBUG
+        and enabled
+        and host in {"localhost","127.0.0.1"}
+        and remote in {"127.0.0.1","::1"}
+    ):
+        return Response(
+            {"error":"NFT demo is disabled outside local development"},
+            status=403,
+        )
+
+    address = str(
+        request.data.get("wallet_address") or ""
+    ).strip()
+
+    qty = request.data.get("quantity")
+
+    if type(qty) is not int or not (1 <= qty <= 5):
+        return Response(
+            {"error":"quantity must be 1 -5"},
+            status=400,
+        )
+
+    user = AppUser.objects.filter(
+        wallet_address = address
+    ).first()
+
+    if user is None:
+        return Response(
+            {"error":"wallet not found in local database"},
+            status=404,
+        )
+
+    rate = Decimal("5")
+    usd_total = Decimal("50") * qty
+    ton_due = (usd_total / rate).quantize(
+        Decimal("0.000000001"),
+        rounding=ROUND_UP,
+    )
+    demo_hash = "LOCAL-NFT-DEMO-" + uuid.uuid4().hex
+
+
+    try:
+        with transaction.atomic():
+           
+            sold = (
+                NFTOrder.objects.filter(
+                    product_id="verdant",
+                    status=NFTOrder.STATUS_COMPLETED,
+                )
+                .aggregate(total=Sum("quantity"))["total"]
+                or 0
+            )
+
+            pending = (
+                NFTOrder.objects.filter(
+                    product_id="verdant",
+                    status=NFTOrder.STATUS_PENDING,
+                )
+                .aggregate(total=Sum("quantity"))["total"]
+                or 0
+            )
+
+
+            if 44 + sold + pending + qty > 200:
+                return Response(
+                    {"error":"No NFT stock available for demo"},
+                    status=409,
+                )
+
+            order = NFTOrder.objects.create(
+                user=user,
+                product_id = "verdant",
+                quantity=qty,
+                usd_total=usd_total,
+                ton_usd_rate=rate,
+                ton_due=ton_due,
+                contact = "[LOCAL DEMO - NO PAYMENT]",
+                payment_tx_hash=demo_hash,
+                verified_ton_paid=ton_due,
+            )
+
+            order,applied = approve_verified_nft_order(
+                order.pk
+            )
+
+            cap = ReferralRewardCap.objects.filter(
+                user=user
+            ).first()
+
+            return Response(
+                {
+                    "id":str(order.pk),
+                    "status":order.status,
+                    "demo":True,
+                    "quantity":order.quantity,
+                    "usd_total":str(usd_total),
+                    "ton_due":str(ton_due),
+                    "created_at":order.created_at.isoformat(),
+                    "cap_ton":str(cap.cap_ton) if cap else "0",
+                    "personal_profit_ton":"0",
+                    "message":"Local NFT demo completed",
+                },
+                status=201,
+            )
+
+    except Exception:
+        logger.exception("[NFT DEMO] Test purchase failed")
+        return Response(
+            {"error":"NFT demo purchase failed; check Django logs"},
+            status=400,
+        )
+
+
+
+
+
+@api_view(["POST"])
+def nft_buy_internal(request):
+    from decimal import Decimal, ROUND_UP
+    from django.db import transaction
+    from django.db.models import Sum
+
+    qty = request.data.get("quantity")
+    wallet_address = str(
+        request.data.get("wallet_address") or ""
+    ).strip()
+
+    if type(qty) is not int or not (1 <= qty <= 5):
+        return Response(
+            {"error": "تعداد NFT باید بین ۱ تا ۵ باشد."},
+            status=400,
+        )
+
+    # فقط هویت تأییدشده کاربر مجاز به خرج‌کردن موجودی است
+   
+    # فقط برای تست محلی با حساب آزمایشی ثابت
+    demo_enabled = (
+        settings.DEBUG
+        and os.getenv("ENABLE_NFT_DEMO", "").lower()
+        in {"true", "1", "yes"}
+        and request.get_host().split(":")[0].lower()
+        in {"localhost", "127.0.0.1"}
+        and request.META.get("REMOTE_ADDR")
+        in {"127.0.0.1", "::1"}
+    )
+
+    if demo_enabled:
+        demo_user_id = int(os.getenv("NFT_DEMO_USER_ID", "0"))
+
+        if demo_user_id <= 0:
+            return Response(
+                {"error": "NFT_DEMO_USER_ID تنظیم نشده است."},
+                status=403,
+            )
+
+        user = AppUser.objects.filter(
+            pk=demo_user_id
+        ).first()
+
+    else:
+        try:
+            telegram_id = _verified_nft_telegram_id(request)
+        except (ValueError, TypeError, KeyError):
+            return Response(
+                {
+                    "code": "AUTH_REQUIRED",
+                    "error": "احراز هویت تلگرام لازم است.",
+                },
+                status=401,
+            )
+
+        user = AppUser.objects.filter(
+            telegram_id=telegram_id
+        ).first()
+
+    if not user:
+        return Response(
+            {"error": "کاربر پیدا نشد."},
+            status=404,
+        )
+
+    if user.wallet_address != wallet_address:
+        return Response(
+            {"error": "کیف پول متعلق به حساب آزمایشی نیست."},
+            status=403,
+        )
+
+
+    try:
+        rate = Decimal(str(fetch_ton_usd_rate()))
+        if rate <= 0 or not rate.is_finite():
+            raise ValueError("Invalid TON rate")
+
+        usd_total = Decimal("50.00") * qty
+        ton_due = (usd_total / rate).quantize(
+            Decimal("0.000000001"),
+            rounding=ROUND_UP,
+        )
+    except Exception:
+        return Response(
+            {"error": "قیمت TON در دسترس نیست."},
+            status=503,
+        )
+
+    try:
+        with transaction.atomic():
+            wallet = (
+                Wallet.objects.select_for_update()
+                .get(user=user)
+            )
+
+            balance = Decimal(str(wallet.ton_balance))
+
+            if balance < ton_due:
+                return Response(
+                    {
+                        "code": "INSUFFICIENT_BALANCE",
+                        "error": "موجودی کیف پول داخلی کافی نیست. لطفاً موجودی کیف پول داخلی را افزایش بده.",
+                        "balance_ton": str(balance),
+                        "required_ton": str(ton_due),
+                        "shortage_ton": str(ton_due - balance),
+                    },
+                    status=409,
+                )
+
+            sold = (
+                NFTOrder.objects.filter(
+                    product_id="verdant",
+                    status=NFTOrder.STATUS_COMPLETED,
+                ).aggregate(total=Sum("quantity"))["total"]
+                or 0
+            )
+
+            pending = (
+                NFTOrder.objects.filter(
+                    product_id="verdant",
+                    status=NFTOrder.STATUS_PENDING,
+                ).aggregate(total=Sum("quantity"))["total"]
+                or 0
+            )
+
+            if 44 + sold + pending + qty > 200:
+                return Response(
+                    {"error": "موجودی NFT کافی نیست."},
+                    status=409,
+                )
+
+            internal_ref = "NFT-INTERNAL-" + uuid.uuid4().hex
+
+            order = NFTOrder.objects.create(
+                user=user,
+                product_id="verdant",
+                quantity=qty,
+                usd_total=usd_total,
+                ton_usd_rate=rate,
+                ton_due=ton_due,
+                contact=str(
+                    request.data.get("contact") or ""
+                )[:255],
+                payment_tx_hash=internal_ref,
+                verified_ton_paid=ton_due,
+            )
+
+            # کسر مبلغ از موجودی داخلی
+            wallet.ton_balance = balance - ton_due
+            wallet.save(update_fields=["ton_balance"])
+
+            WalletTransaction.objects.create(
+                user=user,
+                transaction_type="purchase",
+                amount=ton_due,
+                asset="TON",
+                status="COMPLETED",
+                tx_hash="",
+                reference=internal_ref,
+            )
+
+            # ثبت نهایی NFT و پورسانت‌های معرفی
+            # بدون ایجاد سود شخصی برای خریدار NFT
+            order, applied = approve_verified_nft_order(
+                order.pk
+            )
+
+            return Response(
+                {
+                    "id": str(order.id),
+                    "status": order.status,
+                    "quantity": order.quantity,
+                    "usd_total": str(order.usd_total),
+                    "ton_due": str(order.ton_due),
+                    "remaining_ton": str(wallet.ton_balance),
+                    "created_at": order.created_at.isoformat(),
+                    "payment_method": "INTERNAL_TON",
+                },
+                status=201,
+            )
+
+    except Wallet.DoesNotExist:
+        return Response(
+            {"error": "کیف پول داخلی پیدا نشد."},
+            status=404,
+        )
+
+    except Exception:
+        logger.exception("Internal NFT purchase failed")
+        return Response(
+            {"error": "خرید NFT انجام نشد. گزارش سرور را بررسی کن."},
+            status=500,
+        )
+
+
+    

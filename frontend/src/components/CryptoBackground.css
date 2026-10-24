@@ -1,0 +1,56 @@
+/* =========================================================
+   Crypto background (used by the Timer page)
+   ========================================================= */
+
+.crypto-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 45% at 50% -8%, rgba(14, 165, 233, .26), transparent 60%),
+    radial-gradient(ellipse 55% 40% at 92% 58%, rgba(99, 102, 241, .16), transparent 60%),
+    radial-gradient(ellipse 55% 40% at 6% 82%, rgba(6, 200, 255, .12), transparent 60%),
+    linear-gradient(180deg, #041227 0%, #061a36 52%, #030d1e 100%);
+}
+
+/* fading technical grid */
+.crypto-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(56, 189, 248, .055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(56, 189, 248, .055) 1px, transparent 1px);
+  background-size: 44px 44px;
+  -webkit-mask-image: radial-gradient(ellipse 75% 65% at 50% 38%, #000 15%, transparent 78%);
+  mask-image: radial-gradient(ellipse 75% 65% at 50% 38%, #000 15%, transparent 78%);
+}
+
+/* vignette keeps the edges calm so the UI stays the focus */
+.crypto-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: radial-gradient(ellipse at 50% 45%, transparent 52%, rgba(1, 6, 16, .6) 100%);
+}
+
+.crypto-bg__canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 1;
+}
+
+/* Let the background show through the page while the Timer is mounted.
+   (Timer.css forces a solid #071a33 on these with !important.)
+   html keeps the solid colour as a safe fallback. */
+html body.crypto-bg-active,
+html body.crypto-bg-active #root,
+html body.crypto-bg-active .boost-page {
+  background: transparent !important;
+}

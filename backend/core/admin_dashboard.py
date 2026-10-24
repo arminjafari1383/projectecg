@@ -6,10 +6,13 @@ from decimal import Decimal
 import pyotp
 
 from django.core import signing
-from django.db.models import Count, Sum
+from django.db.models import Count, Sum,Case,IntegerField,When
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
+from django.db import transaction
+from django.utils import timezone
+
 
 from .models import (
     AppUser,
@@ -18,8 +21,13 @@ from .models import (
     Purchase,
     WithdrawRequest,
     Ledger,
+    PendingPurchase,
+    Purchase,
+    PurchaseRequest
 )
+from .services import register_purchase
 
+import logging
 
 ADMIN_SESSION_SALT = "core.admin-session.v1"
 
@@ -177,30 +185,41 @@ def admin_system_dashboard(request):
             "referral_epl_total": _money(_ledger_sum(user, "REF_BONUS")),
         })
 
-    purchases = []
-    purchase_qs = (
-        Purchase.objects
-        .select_related("user")
-        .order_by("-created_at")[:500]
-    )
+        purchase_requests = []
+        request_qs = (
+            PurchaseRequest.objects
+            .select_related("user", "purchase")
+            .order_by(
+                Case(When(status=PurchaseRequest.STATUS_PENDING, then=0),
+                    default=1, output_field=IntegerField()),
+                "-created_at",
+            )[:500]
+        )
+        for item in request_qs:
+            purchase_requests.append({
+                "id": item.id,
+                "status": item.status,
+                "telegram_id": item.user.telegram_id,
+                "username": item.user.telegram_username or "",
+                "wallet_address": item.wallet_address or item.user.wallet_address or "",
+                "merchant_address": item.merchant_address or "",
+                "ton_amount": _money(item.ton_amount),
+                "ton_usd_rate": _money(item.ton_usd_rate),
+                "usd_value": _money(item.ton_amount * item.ton_usd_rate),
+                "output_asset": item.output_asset,
+                "receipt_hash": item.receipt_hash,
+                "boc": item.boc or "",
+                "invoice_no": item.purchase.invoice_no if item.purchase_id else "",
+                "review_note": item.review_note or "",
+                "created_at": item.created_at,
+                "reviewed_at": item.reviewed_at,
+            })
 
-    for item in purchase_qs:
-        purchases.append({
-            "id": item.id,
-            "invoice_no": item.invoice_no,
-            "username": item.user.telegram_username or "",
-            "wallet_address": item.user.wallet_address or "",
-            "ton_amount": _money(item.ton_amount),
-            "ton_usd_rate": _money(item.ton_usd_rate),
-            "usd_value": _money(item.usd_value),
-            "ecg_value": _money(item.ecg_value),
-            "output_amount": _money(item.output_amount),
-            "output_asset": item.output_asset,
-            "self_profit_5": _money(item.self_profit_5),
-            "profit_asset": item.profit_asset,
-            "tx_hash": item.ton_tx_hash,
-            "created_at": item.created_at,
-        })
+   
+
+    
+
+    
 
     withdrawals = []
     withdrawal_qs = (
@@ -276,6 +295,10 @@ def admin_system_dashboard(request):
             "total_users": users_qs.count(),
             "active_users": users_qs.filter(is_active=True).count(),
             "total_purchases": Purchase.objects.count(),
+            "pending_purchases":PendingPurchase.objects.filter(
+                status="PENDING"
+            ).count(),
+            "total_withdrawals": len(withdrawals),
             "total_ton_received": _money(purchase_total["ton"]),
             "total_usd_value": _money(purchase_total["usd"]),
 
@@ -295,8 +318,125 @@ def admin_system_dashboard(request):
 
             "pending_withdrawals": WithdrawRequest.objects.filter(status="PENDING").count(),
             "treasury": _treasury_balance(),
+            
         },
-        "users": users,
-        "purchases": purchases,
-        "withdrawals": withdrawals,
+
     })
+
+
+@api_view(["POST"])
+def admin_review_purchase(request,purchase_id):
+
+    if not _admin_allowed(request):
+        return Response(
+            {"error":"Admin access denied"},
+            status=403,
+        )
+
+    action = str(
+        request.data.get("action","")
+    ).strip().upper()
+
+    if action not in ("APPROVE","REJECT"):
+        return Response(
+            {"error":"Invalid action"},
+            status=400,
+        )
+
+    try:
+        with transaction.atomic():
+            item = (
+                PendingPurchase.objects
+                .select_for_update()
+                .select_related("user","purchase")
+                .get(pk=purchase_id)
+            )
+
+            # Already reviewed
+            if item.status != "PENDING":
+                return Response({
+                    "status":item.status,
+                    "request_id":item.id,
+                    "purchase_id":item.purchase_id,
+                    "message":"Already reviewed",
+                }, status=200)
+
+            # Reject purchase
+            if action == "REJECT":
+                item.status = "REJECTED"
+                item.reviewed_at = timezone.now()
+                item.save(
+                    updata_fields=["status","reviewed_at"]
+                )
+
+                return Response({
+                    "status":"REJECTED",
+                    "request_id":item.id,
+                    "message":"Purchase rejected",
+                })
+
+            # Protect against previously registered receipts
+
+            existing = Purchase.objects.filter(
+                ton_tx_hash = item.receipt_hash
+            ).first()
+
+            if existing:
+                if existing.user_id != item.user_id:
+                    return Response(
+                        {"error":"Receipt already used"},
+                        status=409,
+                    )
+                purchase = existing
+
+            else:
+                # Register real purchase only after admin approval
+                purchase = register_purchase(
+                    user=item.user,
+                    ton_amount=item.ton_amount,
+                    ton_tx_hash=item.receipt_hash,
+                    output_asset=item.output_asset,
+                )
+
+            # Mark approved and link real invoice
+            item.purchase = purchase
+            item.status = "APPROVED"
+            item.reviewed_at = timezone.now()
+            item.save(
+                update_fields=[
+                    "purchase",
+                    "status",
+                    "reviewed_at",
+                ]
+            )
+
+            return Response({
+                "status":"APPROVED",
+                "request_id":item.id,
+                "purchase_id":purchase.id,
+                "invoice_no":purchase.invoice_no,
+                "message":"Purchase approved",
+            })
+
+    except PendingPurchase.DoesNotExist:
+        return Response(
+            {"error":"Purchase request not found"},
+            status=404,
+        )
+
+    except ValueError as exc:
+
+        return Response(
+            {"error":str(exc)},
+            status=400,
+        )
+
+    except Exception:
+        logging.getLogger(__name__).exception(
+            "Admin purchase review failed"
+        )
+
+        return Response(
+            {"error":"Unable to review purchase"},
+            status=500
+        )
