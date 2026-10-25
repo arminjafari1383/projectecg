@@ -113,26 +113,13 @@ export default function Wallet() {
   // );
 
 
-  const LOCAL_MODE = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-  
-  
-  const LOCAL_WALLET_ADDRESS = "UQAnSyNFHfwJqSsmWefsaBvzIv3LLfsfP4qxf3DjEMVLsztU";
+  // Real wallet only: never use a hardcoded address for payments.
+  // Localhost must use the same real TonConnect flow as production.
+  const address = tonWallet?.account?.address || null;
 
-  const address = useMemo(() => {
-    if (LOCAL_MODE) {
-      return LOCAL_WALLET_ADDRESS;
-    }
-
-    return tonWallet?.account?.address;
-  }, [tonWallet]);
-  // Only for local UI testing
-const isTonWalletConnected = Boolean(
-  LOCAL_MODE ||
-  (
-    tonWallet?.account?.address &&
-    tonConnectUI.connected
-  )
-);
+  const isTonWalletConnected = Boolean(
+    tonConnectUI.connected && address
+  );
 
   
 
@@ -1697,23 +1684,44 @@ const renderTransactionsPage = () => {
 
         {topupStep === 2 && (
           <>
-            <h2>Connect your wallet</h2>
-           <p>
-            Amount: {amount.toLocaleString("en-US")} TON
-           </p>
-           <p>
-            In the next step, we will connect your
-            existing TonConnect integration.
-           </p>
+            <h2>Connect your TON wallet</h2>
 
-           <button
-           className="wallet-topup-continue"
-           onClick={() => setTopupStep(1)}
-           >
-            Edit amount
+            <p>
+              Amount: <strong>{amount.toLocaleString("en-US")} TON</strong>
+            </p>
 
-           </button>
-          
+            {isTonWalletConnected ? (
+              <>
+                <p>Wallet connected: {shortenMiddle(address)}</p>
+                <button
+                  type="button"
+                  className="wallet-topup-continue"
+                  onClick={() => setTopupStep(3)}
+                >
+                  Continue to payment
+                </button>
+              </>
+            ) : (
+              <>
+                <p>Connect Tonkeeper or another supported TON wallet.</p>
+                <div className="wallet-topup-connect-button">
+                  <TonConnectButton />
+                </div>
+                <button
+                  type="button"
+                  className="wallet-topup-continue"
+                  onClick={() => setTopupStep(1)}
+                >
+                  Edit amount
+                </button>
+              </>
+            )}
+
+            {topupError && (
+              <p role="alert" className="wallet-topup-error">
+                {topupError}
+              </p>
+            )}
           </>
         )}
 
@@ -1734,18 +1742,11 @@ const renderTransactionsPage = () => {
                   Network: <strong>TON</strong>
                 </p>
               </div>
-
-              {LOCAL_MODE && !tonConnectUI.connected && (
-                <p className="wallet-topup-error">
-                  Local Preview Mode — No real wallet connected
-                </p>
-              )}
-
-             <button
+<button
              type="button"
              className="wallet-topup-continue"
              onClick={submitTonTopUp}
-             disabled={topupLoading || !tonConnectUI.connected}
+             disabled={topupLoading || !isTonWalletConnected}
              >
               {topupLoading ? "Submitting..." : "Pay with TON"}
              </button>
