@@ -3689,6 +3689,13 @@ def create_ton_topup(request):
             amount * Decimal("1000000000")
         )
 
+        # Configured chain must match TonConnect wallet chain.
+        network = str(
+            getattr(settings, "TON_NETWORK", os.getenv("TON_NETWORK", "-239"))
+        ).strip()
+        if network not in {"-239", "-3"}:
+            return Response({"error": "Invalid TON_NETWORK configuration"}, status=500)
+
         deposit = TonDeposit.objects.create(
             user = user,
             amount = amount,
@@ -3705,18 +3712,19 @@ def create_ton_topup(request):
         ).decode("ascii")
 
         return Response({
-            "status":"pending",
-            "deposit_id":deposit.id,
-            "reference":str(deposit.reference),
-            "transaction":{
-                "validUntil":int(time.time()) + 300,
-                "message":[{
+            "status": "pending",
+            "deposit_id": str(deposit.id),
+            "reference": str(deposit.reference),
+            "network": network,
+            "transaction": {
+                "validUntil": int(time.time()) + 300,
+                "messages": [{
                     "address": merchant_address,
-                    "amount":str(nano_amount),
-                    "payload":payload
-                }]
-            }
-        },status=201)
+                    "amount": str(nano_amount),
+                    "payload": payload,
+                }],
+            },
+        }, status=201)
 
     except Exception:
         logger.exception("TON TOPUP CREATE ERROR")
