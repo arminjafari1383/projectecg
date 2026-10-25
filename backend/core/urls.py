@@ -245,7 +245,13 @@ urlpatterns = [
     "nft/buy-internal/",
     views.nft_buy_internal,
     name="nft_buy_internal",
-),
+    ),
+
+    path(
+        "ton/topup/create/",
+        views.create_ton_topup,
+        name="ton_tonup_create",
+    ),
 
     
 ]
