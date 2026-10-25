@@ -253,5 +253,11 @@ urlpatterns = [
         name="ton_tonup_create",
     ),
 
+    path(
+    "ton/topup/confirm/",
+    views.confirm_ton_topup,
+    name="ton_topup_confirm",
+),
+
     
 ]

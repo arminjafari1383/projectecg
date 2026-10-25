@@ -512,6 +512,61 @@ def _get_external_message_hash(
     return message_hash
 
 
+def _extract_topup_comment(message):
+    """
+    Extract the decoded TOPUP reference from a TON Center message.
+    """
+    if not isinstance(message, dict):
+        return None
+
+    # TON Center API v3 decoded message format
+    message_content = message.get("message_content") or {}
+
+    if isinstance(message_content, dict):
+        decoded = message_content.get("decoded") or {}
+
+        if isinstance(decoded, dict):
+            comment = decoded.get("comment")
+
+            if isinstance(comment, str):
+                comment = comment.strip()
+
+                if comment.startswith("TOPUP:"):
+                    return comment
+
+        # Support alternative decoded response formats
+        for key in ("text", "comment"):
+            value = message_content.get(key)
+
+            if isinstance(value, str):
+                value = value.strip()
+
+                if value.startswith("TOPUP:"):
+                    return value
+
+    # Support alternate API response formats
+    for key in ("decoded_body", "comment"):
+        candidate = message.get(key)
+
+        if isinstance(candidate, str):
+            candidate = candidate.strip()
+
+            if candidate.startswith("TOPUP:"):
+                return candidate
+
+        if isinstance(candidate, dict):
+            for nested_key in ("text", "comment"):
+                value = candidate.get(nested_key)
+
+                if isinstance(value, str):
+                    value = value.strip()
+
+                    if value.startswith("TOPUP:"):
+                        return value
+
+    return None
+
+
 def _find_verified_gram_payment(
     *,
     message_hash: str,
@@ -606,6 +661,7 @@ def _find_verified_gram_payment(
         matching_messages = []
 
         for message in tx.get("out_msgs") or []:
+            logger.info("TON OUT MESSAGE DATA:%s",message)
             destination = message.get("destination")
 
             if not destination:
@@ -642,6 +698,7 @@ def _find_verified_gram_payment(
                     ),
                     "value_nano": value_nano,
                     "destination": destination,
+                    "comment":_extract_topup_comment(message),
                 }
             )
 
@@ -3733,6 +3790,243 @@ def create_ton_topup(request):
             status=500
         )
 
+@api_view(["POST"])
+def confirm_ton_topup(request):
+    deposit_id = str(request.data.get("deposit_id") or "").strip()
+    boc = str(request.data.get("boc") or "").strip()
+    wallet_address = str(
+        request.data.get("wallet_address") or  ""
+    ).strip()
+
+    if not deposit_id.isdigit() or not boc or not wallet_address:
+        return Response(
+            {"error":"deposit_id,boc and wallet_address are required"},
+            status=400,
+        )
+
+    deposit = TonDeposit.objects.filter(pk=deposit_id).first()
+
+    if deposit is None:
+        return Response(
+            {"error":"Top-up request not found"},
+            status=404,
+        )
+
+    try:
+        if (
+            _ton_address_to_raw(wallet_address)
+            != _ton_address_to_raw(deposit.sender_address)
+        ):
+            return Response(
+                {"error":"Wallet does not match this top-up"},
+                status = 403,
+            )
+    except ValueError:
+        return Response(
+            {"error":"Invalid TON wallet address"},
+            status=400,
+        )
+
+    if deposit.status == "confirmed":
+        wallet = Wallet.objects.get(user=deposit.user)
+        return Response(
+            {
+                "status":"confirmed",
+                "already_processed":True,
+                "ton_balance":str(wallet.ton_balance),
+            },
+            status=200,
+        )
+
+    if deposit.status != "pending":
+        return Response(
+            {"error":"Top-up is not pending"},
+            status=409,
+        )
+
+
+    network = str(
+        getattr(
+            settings,
+            "TON_NETWORK",
+            os.getenv("TON_NETWORK","-239")
+        )
+    ).strip()
+
+    if network not in {"-239","-3"}:
+        return Response(
+            {"error":"Invalid TON network configuration"},
+            status=500,
+        )
+
+    try:
+        message_hash = _get_external_message_hash(
+            boc=boc,
+            network=network,
+        )
+
+        verified = _find_verified_gram_payment(
+            message_hash = message_hash,
+            wallet_address=deposit.sender_address,
+            gram_address=deposit.merchant_address,
+            network=network,
+        )
+
+    except Exception:
+        logger.exception(
+            "TON TOPUP VERIFICATION ERROR deposit_id=%s",
+            deposit.id,
+        )
+
+        return Response(
+            {"error":"Unable to verify payment right now"},
+            status=503,
+        )
+
+    if verified is None:
+        return Response(
+            {
+                "status":"pending",
+                "message":"Payment has not been indexed yet",
+            },
+            status=202,
+        )
+
+    expected_comment = f"TOPUP:{deposit.reference}"
+
+    matching_messages = [
+        item
+        for item in verified["matching_messages"]
+        if item.get("comment") == expected_comment
+    ]
+
+    expected_nano = int(
+        deposit.amount * Decimal("1000000000")
+    )
+
+    if len(matching_messages) != 1:
+        return Response(
+            {"error":"Payment reference could not be verified"},
+            status=409,
+        )
+
+    if int(matching_messages[0]["value_nano"]) != expected_nano:
+        return Response(
+            {"error":"Payment amount does not match"},
+            status=409
+        )
+
+    tx = verified["wallet_transaction"]
+
+
+    try:
+        tx_timestamp = int(tx.get("utime") or 0)
+
+    except (TypeError,ValueError):
+        tx_timestamp = 0
+
+    if tx_timestamp < int(deposit.created_at.timestamp()):
+        return Response(
+            {"error":"Transaction predates the top-up request"},
+            status=409,
+        )
+
+    tx_hash = str(verified.get("tx_hash") or "").strip()
+
+    if not tx_hash:
+        return Response(
+            {"error":"Transaction hash is missing"},
+            status=503,
+        )
+
+    try:
+        with transaction.atomic():
+            locked_deposit = (
+                TonDeposit.objects
+                .select_for_update()
+                .get(pk=deposit.pk)
+
+            )
+
+            if locked_deposit.status == "confirmed":
+                wallet = Wallet.objects.get(user=locked_deposit.user)
+                return Response(
+                    {
+                        "status":"confirmed",
+                        "already_processed":True,
+                        "ton_balance":str(wallet.ton_balance),
+                    },
+                    status = 200,
+                )
+
+            if locked_deposit.status != "pending":
+                return Response(
+                    {"error":"Top-up is no longer pending"},
+                    status=409,
+                )
+
+            if TonDeposit.objects.filter(
+                tx_hash=tx_hash,
+                status="confirmed",
+            ).exclude(pk=locked_deposit.pk).exists():
+                return Response(
+                    {"error":"Transaction already credited"},
+                    status=409,
+                )
+
+            wallet,_=Wallet.objects.select_for_update().get_or_create(
+                user=locked_deposit.user
+            )
+
+            wallet.ton_balance = (
+                Decimal(str(wallet.ton_balance or 0))
+                + locked_deposit.amount
+            )
+
+            wallet.save(update_fields=["ton_balance"])
+
+            locked_deposit.tx_hash = tx_hash
+            locked_deposit.status = "confirmed"
+            locked_deposit.confirmed_at = timezone.now()
+            locked_deposit.save(
+                update_fields=[
+                    "tx_hash",
+                    "status",
+                    "confirmed_at",
+                ]
+            )
+
+            WalletTransaction.objects.create(
+                user=locked_deposit.user,
+                transaction_type = "topup",
+                amount=locked_deposit.amount,
+                asset="TON",
+                received_amount=locked_deposit.amount,
+                received_asset="TON",
+                status="COMPLETED",
+                tx_hash=tx_hash,
+                reference=str(locked_deposit.reference),
+            )
+
+            return Response(
+                {
+                    "status":"confirmed",
+                    "already_processed":False,
+                    "ton_balance":str(wallet.ton_balance),
+                    "tx_hash":tx_hash,
+                },
+                status=200,
+            )
+    except Exception:
+        logger.exception(
+            "TON TOPUP CREDIT ERROR deposit_id=%s",
+            deposit_id,
+        )
+
+        return Response(
+            {"error":"Could not finalize top-up"},
+            status=500,
+        )
 
 # =====================================
 # FREE VPN REWARD
