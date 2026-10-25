@@ -1551,8 +1551,18 @@ const renderTransactionsPage = () => {
       if (deposit.status !== "pending" || !deposit.deposit_id || !deposit.reference || !deposit.transaction?.messages?.[0]) {
         throw new Error("Invalid Top Up response from server.");
       }
-      if (String(deposit.network) !== String(tonWallet?.account?.chain)) {
-        throw new Error("Wallet network does not match the server TON network. Check Mainnet/Testnet before paying.");
+      const serverNetwork = String(deposit.network);
+      const walletNetwork = String(tonWallet?.account?.chain);
+
+      console.log("[TOPUP NETWORK]", {
+        serverNetwork,
+        walletNetwork,
+      });
+
+      if (serverNetwork !== walletNetwork) {
+        throw new Error(
+          `Network mismatch: Server=${serverNetwork}, Wallet=${walletNetwork}`
+        );
       }
       const commentCell = beginCell().storeUint(0, 32)
         .storeStringTail(`TOPUP:${deposit.reference}`).endCell();
