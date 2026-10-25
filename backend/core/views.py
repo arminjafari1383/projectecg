@@ -2617,7 +2617,7 @@ def referral_count(request):
 # =======================
 
 HOURLY_REWARD = Decimal("100")
-COOLDOWN = timedelta(seconds=30)
+COOLDOWN = timedelta(hours=1)
 
 
 def _hourly_reward_stats(user):
