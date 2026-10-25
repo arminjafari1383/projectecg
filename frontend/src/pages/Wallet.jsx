@@ -26,6 +26,9 @@ import {
 const ECG_PER_USDT = 312;
 const WALLET_RETURN_TO_KEY = "wallet_return_to";
 
+// Diagnostic mode: NEVER broadcast a real payment until backend confirmation is implemented.
+const TOPUP_DIAGNOSTIC_ONLY = true;
+
 const ECG_CONTRACT_ADDRESS = "0x79b88B5298C6025b09d910428A30e960dcEeB282";
 
 const ECG_CONTRACT_LINK =
@@ -1523,13 +1526,26 @@ const renderTransactionsPage = () => {
   }, [address, verifySubmittedTopUp]);
 
   const submitTonTopUp = async () => {
-    const walletAddress = tonWallet?.account?.address;
+    const walletAddress = tonWallet?.account?.address || null;
     const amountText = String(topupAmount).trim();
+    const walletNetwork = tonWallet?.account?.chain == null
+      ? null
+      : String(tonWallet.account.chain);
+
+    console.groupCollapsed("[TON TOPUP DEBUG] Create payment");
+    console.log("[TOPUP 01] Wallet connection", {
+      connected: Boolean(tonConnectUI.connected),
+      walletNetwork,
+      walletAddressPresent: Boolean(walletAddress),
+      diagnosticOnly: TOPUP_DIAGNOSTIC_ONLY,
+    });
+    console.log("[TOPUP 02] Requested amount (TON)", amountText);
+    console.groupEnd();
+
     if (!walletAddress || !tonConnectUI.connected) {
       setTopupError("Connect your real TON wallet first.");
       return;
     }
-    // Validate up to 9 decimals without floating-point precision errors.
     if (!/^(?:0|[1-9]\d*)(?:\.\d{1,9})?$/.test(amountText) || Number(amountText) <= 0) {
       setTopupError("Enter a valid positive TON amount (up to 9 decimals).");
       return;
@@ -1540,30 +1556,73 @@ const renderTransactionsPage = () => {
       setTopupStep(4);
       return;
     }
+
     setTopupLoading(true);
     setTopupError("");
     setTopupStatus("");
+
     try {
-      const { data: deposit } = await api.post("/ton/topup/create/", {
+      console.log("[TOPUP 03] POST /ton/topup/create/ started");
+      const response = await api.post("/ton/topup/create/", {
         wallet_address: walletAddress,
         amount: amountText,
       });
-      if (deposit.status !== "pending" || !deposit.deposit_id || !deposit.reference || !deposit.transaction?.messages?.[0]) {
-        throw new Error("Invalid Top Up response from server.");
-      }
-      const serverNetwork = String(deposit.network);
-      const walletNetwork = String(tonWallet?.account?.chain);
-
-      console.log("[TOPUP NETWORK]", {
-        serverNetwork,
-        walletNetwork,
+      const deposit = response.data;
+      console.log("[TOPUP 04] Server response metadata", {
+        httpStatus: response.status,
+        responseKeys: deposit && typeof deposit === "object" ? Object.keys(deposit) : [],
+        depositStatus: deposit?.status,
+        depositIdPresent: Boolean(deposit?.deposit_id),
+        referencePresent: Boolean(deposit?.reference),
+        serverNetworkRaw: deposit?.network,
+        serverNetworkType: typeof deposit?.network,
+        transactionKeys: deposit?.transaction && typeof deposit.transaction === "object"
+          ? Object.keys(deposit.transaction)
+          : [],
+        messagesCount: Array.isArray(deposit?.transaction?.messages)
+          ? deposit.transaction.messages.length
+          : 0,
+        hasSingularMessage: Boolean(deposit?.transaction?.message),
       });
 
-      if (serverNetwork !== walletNetwork) {
-        throw new Error(
-          `Network mismatch: Server=${serverNetwork}, Wallet=${walletNetwork}`
-        );
+      if (deposit?.status !== "pending" || !deposit?.deposit_id ||
+          !deposit?.reference || !deposit?.transaction?.messages?.[0]) {
+        console.error("[TOPUP 05] Invalid create response shape; expected transaction.messages[0]");
+        throw new Error("Invalid Top Up response from server. See [TOPUP 04] in Console.");
       }
+
+      const serverNetwork = deposit.network == null ? null : String(deposit.network);
+      console.log("[TOPUP 06] Network comparison", {
+        serverNetwork,
+        walletNetwork,
+        equal: serverNetwork !== null && serverNetwork === walletNetwork,
+        expectedMainnet: "-239",
+        expectedTestnet: "-3",
+      });
+
+      if (!serverNetwork || !walletNetwork || serverNetwork !== walletNetwork) {
+        console.error("[TOPUP 07] NETWORK MISMATCH: payment blocked", {
+          serverNetwork,
+          walletNetwork,
+        });
+        throw new Error(`Network mismatch: Server=${serverNetwork ?? "missing"}, Wallet=${walletNetwork ?? "missing"}`);
+      }
+
+      console.log("[TOPUP 08] Destination/amount validation metadata", {
+        recipientPresent: Boolean(deposit.transaction.messages[0].address),
+        nanoAmount: deposit.transaction.messages[0].amount,
+        validUntil: deposit.transaction.validUntil,
+      });
+
+      // The supplied backend has no /ton/topup/confirm/ implementation yet.
+      // Do not enable a real wallet transfer before verified, idempotent crediting exists.
+      if (TOPUP_DIAGNOSTIC_ONLY) {
+        console.warn("[TOPUP 09] Diagnostic mode: sendTransaction intentionally NOT called.");
+        setTopupStatus("Network and create API checks completed. No payment was sent.");
+        setTopupError("Diagnostic mode: payment intentionally disabled until backend /ton/topup/confirm/ is ready.");
+        return;
+      }
+
       const commentCell = beginCell().storeUint(0, 32)
         .storeStringTail(`TOPUP:${deposit.reference}`).endCell();
       const transaction = {
@@ -1573,8 +1632,10 @@ const renderTransactionsPage = () => {
           payload: Buffer.from(commentCell.toBoc()).toString("base64"),
         })),
       };
+      console.log("[TOPUP 10] Opening connected TON wallet for approval");
       const result = await tonConnectUI.sendTransaction(transaction);
       if (!result?.boc) throw new Error("Wallet did not return a signed transaction.");
+      console.log("[TOPUP 11] Wallet returned signed BOC (content omitted)");
 
       const payment = { deposit_id: deposit.deposit_id, boc: result.boc, wallet_address: walletAddress };
       sessionStorage.setItem("pending_ton_topup", JSON.stringify(payment));
@@ -1582,8 +1643,17 @@ const renderTransactionsPage = () => {
       setTopupLoading(false);
       await verifySubmittedTopUp(payment);
     } catch (error) {
-      console.error("[TON TOPUP]", error);
+      console.error("[TOPUP ERROR]", {
+        message: error?.message,
+        status: error?.response?.status,
+        code: error?.code,
+        serverError: error?.response?.data?.error,
+        serverMessage: error?.response?.data?.message,
+        responseKeys: error?.response?.data && typeof error.response.data === "object"
+          ? Object.keys(error.response.data) : [],
+      });
       setTopupError(error?.response?.data?.error || error?.message || "Could not submit Top Up.");
+    } finally {
       setTopupLoading(false);
     }
   };
