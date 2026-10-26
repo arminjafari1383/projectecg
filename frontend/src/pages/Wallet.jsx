@@ -26,8 +26,9 @@ import {
 const ECG_PER_USDT = 312;
 const WALLET_RETURN_TO_KEY = "wallet_return_to";
 
-// Real payments are enabled; blockchain confirmation remains mandatory before crediting.
-const TOPUP_DIAGNOSTIC_ONLY = false;
+// TEMP TON TOPUP DIAGNOSTICS: keep payment sending disabled while collecting network evidence.
+const TOPUP_DIAGNOSTIC_ONLY = true;
+console.info("[TON TOPUP DEBUG BUILD] network diagnostics enabled; payment broadcast disabled", { buildTag: "ton-network-debug-2026-10-26" });
 
 const ECG_CONTRACT_ADDRESS = "0x79b88B5298C6025b09d910428A30e960dcEeB282";
 
@@ -1485,7 +1486,6 @@ const renderTransactionsPage = () => {
           const response = await api.post("/ton/topup/confirm/", {
             deposit_id: payment.deposit_id,
             boc: payment.boc,
-            wallet_address: payment.wallet_address,
           });
           if (response.data?.status === "confirmed") {
             sessionStorage.removeItem("pending_ton_topup");
@@ -1599,6 +1599,8 @@ const renderTransactionsPage = () => {
       const deposit = response.data;
 
       console.log("04. Backend response metadata", {
+        debugBuildTag: "ton-network-debug-2026-10-26",
+        requestUrl: "/ton/topup/create/",
         httpStatus: response.status,
         responseKeys: deposit && typeof deposit === "object" ? Object.keys(deposit) : [],
         depositStatus: deposit?.status,
@@ -1654,6 +1656,17 @@ const renderTransactionsPage = () => {
         },
       ]);
       console.log("Networks match:", networksMatch);
+      console.log("Network diagnosis", {
+        backendNetworkRaw: deposit?.network,
+        backendNetworkNormalized: serverNetwork,
+        tonConnectAccountChainRaw: rawWalletChain,
+        tonConnectAccountChainNormalized: normalizedWalletNetwork,
+        backendMainnet: serverNetwork === "-239",
+        walletMainnet: normalizedWalletNetwork === "-239",
+        backendTestnet: serverNetwork === "-3",
+        walletTestnet: normalizedWalletNetwork === "-3",
+        cause: !serverNetwork ? "BACKEND_RESPONSE_NETWORK_MISSING" : !normalizedWalletNetwork ? "WALLET_CHAIN_MISSING" : serverNetwork !== normalizedWalletNetwork ? "NETWORK_IDS_DIFFER" : "NETWORK_IDS_MATCH",
+      });
       console.log("Raw wallet chain:", rawWalletChain);
       console.log("Expected Mainnet ID: -239; Testnet ID: -3");
       console.groupEnd();
@@ -1669,9 +1682,9 @@ const renderTransactionsPage = () => {
           expectedTestnet: "-3",
         });
         throw new Error(
-          `Your TON wallet is connected to ${normalizedWalletNetwork === "-3" ? "Testnet" : normalizedWalletNetwork === "-239" ? "Mainnet" : "an unknown network"}. ` +
-          `Real TON deposits require a Mainnet wallet (server network: ${serverNetwork ?? "missing"}). ` +
-          `Switch your wallet to Mainnet and reconnect.`
+          `Wallet network does not match the server TON network. ` +
+          `Server=${serverNetwork ?? "missing"}, ` +
+          `Wallet=${normalizedWalletNetwork ?? "missing"}.`
         );
       }
 

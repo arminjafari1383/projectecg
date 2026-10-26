@@ -3747,9 +3747,18 @@ def create_ton_topup(request):
         )
 
         # Configured chain must match TonConnect wallet chain.
+        network_setting = getattr(settings, "TON_NETWORK", None)
+        env_network = os.getenv("TON_NETWORK")
         network = str(
-            getattr(settings, "TON_NETWORK", os.getenv("TON_NETWORK", "-239"))
+            network_setting if network_setting is not None else (env_network or "-239")
         ).strip()
+        logger.warning(
+            "[TON TOPUP DEBUG] create request: amount=%s wallet_present=%s "
+            "wallet_suffix=%s merchant_present=%s configured_network=%r "
+            "settings_network=%r env_network=%r",
+            str(amount), bool(wallet_address), wallet_address[-8:] if wallet_address else "",
+            bool(merchant_address), network, network_setting, env_network,
+        )
         if network not in {"-239", "-3"}:
             return Response({"error": "Invalid TON_NETWORK configuration"}, status=500)
 
@@ -3768,6 +3777,12 @@ def create_ton_topup(request):
             comment.encode("utf-8")
         ).decode("ascii")
 
+        logger.warning(
+            "[TON TOPUP DEBUG] created deposit id=%s network=%s amount_nano=%s "
+            "merchant_suffix=%s reference_present=%s",
+            deposit.id, network, nano_amount, merchant_address[-8:] if merchant_address else "",
+            bool(deposit.reference),
+        )
         return Response({
             "status": "pending",
             "deposit_id": str(deposit.id),
