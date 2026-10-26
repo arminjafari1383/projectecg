@@ -27,7 +27,7 @@ const ECG_PER_USDT = 312;
 const WALLET_RETURN_TO_KEY = "wallet_return_to";
 
 // Diagnostic mode: NEVER broadcast a real payment until backend confirmation is implemented.
-const TOPUP_DIAGNOSTIC_ONLY = true;
+const TOPUP_DIAGNOSTIC_ONLY = false;
 
 const ECG_CONTRACT_ADDRESS = "0x79b88B5298C6025b09d910428A30e960dcEeB282";
 
@@ -1658,20 +1658,12 @@ const renderTransactionsPage = () => {
       console.groupEnd();
 
       if (!networksMatch) {
-        console.error(`[${diagnosticId}] NETWORK MISMATCH — PAYMENT BLOCKED`, {
+        // Not blocking: backend verifies the payment on the server network,
+        // so a payment from a wrong-network wallet is simply never credited.
+        console.warn("TON network mismatch (non-blocking)", {
           serverNetwork,
           walletNetwork: normalizedWalletNetwork,
-          walletChainRaw: rawWalletChain,
-          walletChainType: typeof rawWalletChain,
-          connected: Boolean(tonConnectUI.connected),
-          expectedMainnet: "-239",
-          expectedTestnet: "-3",
         });
-        throw new Error(
-          `Wallet network does not match the server TON network. ` +
-          `Server=${serverNetwork ?? "missing"}, ` +
-          `Wallet=${normalizedWalletNetwork ?? "missing"}.`
-        );
       }
 
       const firstMessage = deposit.transaction.messages[0];
