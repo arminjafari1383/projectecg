@@ -25,6 +25,7 @@ import {
 
 const ECG_PER_USDT = 312;
 const WALLET_RETURN_TO_KEY = "wallet_return_to";
+const WALLET_TOPUP_AMOUNT_KEY = "wallet_topup_amount";
 
 // Payment flow mirrors Purchase.jsx: send the backend-created transaction through TON Connect.
 const TOPUP_DIAGNOSTIC_ONLY = false;
@@ -230,7 +231,19 @@ export default function Wallet() {
 
   const [topupStep,setTopupStep] = useState(1);
   
-  const [topupAmount,setTopupAmount] = useState("");
+  // مقدار اولیه topupAmount از location.state یا sessionStorage خوانده می‌شود
+  const [topupAmount,setTopupAmount] = useState(() => {
+    if (location.state?.topupAmount) {
+      return String(location.state.topupAmount);
+    }
+    try {
+      const stored = sessionStorage.getItem(WALLET_TOPUP_AMOUNT_KEY);
+      if (stored) return stored;
+    } catch (e) {
+      // ignore
+    }
+    return "";
+  });
   
   const [topupError,setTopupError] = useState("");
 
@@ -322,6 +335,31 @@ export default function Wallet() {
   useEffect(() => {
     captureInviterCode();
   }, []);
+
+
+  // ====================================================
+  // AUTO-NAVIGATE TO TOP UP (from Purchase page)
+  // ====================================================
+
+  useEffect(() => {
+    if (location.state?.topupAmount) {
+      setWalletPage("topup");
+      setTopupStep(1);
+      // پاک کردن state تا در رفرش بعدی تکرار نشود
+      window.history.replaceState({}, document.title);
+    }
+  }, [location.state]);
+
+  // پاک کردن مقدار ذخیره شده پس از ورود به صفحه Top Up
+  useEffect(() => {
+    if (walletPage === "topup" && topupStep === 1) {
+      try {
+        sessionStorage.removeItem(WALLET_TOPUP_AMOUNT_KEY);
+      } catch (e) {
+        // ignore
+      }
+    }
+  }, [walletPage, topupStep]);
 
 
   // ====================================================
@@ -1760,6 +1798,12 @@ const renderTransactionsPage = () => {
           setTopupStep(1);
           setTopupAmount("");
           setTopupError("");
+          // پاک کردن مقدار ذخیره شده
+          try {
+            sessionStorage.removeItem(WALLET_TOPUP_AMOUNT_KEY);
+          } catch (e) {
+            // ignore
+          }
         }}
         >
           ← Back to Wallet
@@ -1931,6 +1975,11 @@ const renderTransactionsPage = () => {
                 setTopupAmount("");
                 setTopupError("");
                 setTopupStatus("");
+                try {
+                  sessionStorage.removeItem(WALLET_TOPUP_AMOUNT_KEY);
+                } catch (e) {
+                  // ignore
+                }
               }}
             >
               Back to Wallet
@@ -2138,6 +2187,7 @@ const renderTransactionsPage = () => {
 )}
 
        
+        
         
 
        
