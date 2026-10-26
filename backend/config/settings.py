@@ -111,6 +111,8 @@ if _cors_allowed:
 else:
     CORS_ALLOW_ALL_ORIGINS = DEBUG
 
+TON_NETWORK = os.getenv("TON_NETWORK", "-239").strip()
+
 GRAM_MERCHANT_ADDRESS = os.getenv("GRAM_MERCHANT_ADDRESS", "")
 GRAM_WALLET_ADDRESS = os.getenv("GRAM_WALLET_ADDRESS", "")
 

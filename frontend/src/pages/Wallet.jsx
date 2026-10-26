@@ -26,7 +26,7 @@ import {
 const ECG_PER_USDT = 312;
 const WALLET_RETURN_TO_KEY = "wallet_return_to";
 
-// Diagnostic mode: NEVER broadcast a real payment until backend confirmation is implemented.
+// Real payments are enabled; blockchain confirmation remains mandatory before crediting.
 const TOPUP_DIAGNOSTIC_ONLY = false;
 
 const ECG_CONTRACT_ADDRESS = "0x79b88B5298C6025b09d910428A30e960dcEeB282";
@@ -1485,6 +1485,7 @@ const renderTransactionsPage = () => {
           const response = await api.post("/ton/topup/confirm/", {
             deposit_id: payment.deposit_id,
             boc: payment.boc,
+            wallet_address: payment.wallet_address,
           });
           if (response.data?.status === "confirmed") {
             sessionStorage.removeItem("pending_ton_topup");
@@ -1658,12 +1659,20 @@ const renderTransactionsPage = () => {
       console.groupEnd();
 
       if (!networksMatch) {
-        // Not blocking: backend verifies the payment on the server network,
-        // so a payment from a wrong-network wallet is simply never credited.
-        console.warn("TON network mismatch (non-blocking)", {
+        console.error(`[${diagnosticId}] NETWORK MISMATCH — PAYMENT BLOCKED`, {
           serverNetwork,
           walletNetwork: normalizedWalletNetwork,
+          walletChainRaw: rawWalletChain,
+          walletChainType: typeof rawWalletChain,
+          connected: Boolean(tonConnectUI.connected),
+          expectedMainnet: "-239",
+          expectedTestnet: "-3",
         });
+        throw new Error(
+          `Your TON wallet is connected to ${normalizedWalletNetwork === "-3" ? "Testnet" : normalizedWalletNetwork === "-239" ? "Mainnet" : "an unknown network"}. ` +
+          `Real TON deposits require a Mainnet wallet (server network: ${serverNetwork ?? "missing"}). ` +
+          `Switch your wallet to Mainnet and reconnect.`
+        );
       }
 
       const firstMessage = deposit.transaction.messages[0];
