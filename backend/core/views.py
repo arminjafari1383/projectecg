@@ -3663,6 +3663,9 @@ def create_ton_topup(request):
         wallet_address = str(
             request.data.get("wallet_address") or ""
         ).strip()
+        network = str(request.data.get("network") or "").strip()
+        if network not in {"-239", "-3"}:
+            return Response({"error": "Unsupported TON wallet network; expected -239 (Mainnet) or -3 (Testnet)."}, status=400)
 
         try:
             amount = Decimal(
@@ -3746,28 +3749,15 @@ def create_ton_topup(request):
             amount * Decimal("1000000000")
         )
 
-        # Configured chain must match TonConnect wallet chain.
-        network_setting = getattr(settings, "TON_NETWORK", None)
-        env_network = os.getenv("TON_NETWORK")
-        network = str(
-            network_setting if network_setting is not None else (env_network or "-239")
-        ).strip()
-        logger.warning(
-            "[TON TOPUP DEBUG] create request: amount=%s wallet_present=%s "
-            "wallet_suffix=%s merchant_present=%s configured_network=%r "
-            "settings_network=%r env_network=%r",
-            str(amount), bool(wallet_address), wallet_address[-8:] if wallet_address else "",
-            bool(merchant_address), network, network_setting, env_network,
-        )
-        if network not in {"-239", "-3"}:
-            return Response({"error": "Invalid TON_NETWORK configuration"}, status=500)
-
+        # Bind this deposit to the network reported by the connected TON wallet.
+        # Confirmation below uses this stored value, not a global forced network.
         deposit = TonDeposit.objects.create(
-            user = user,
-            amount = amount,
-            sender_address = wallet_address,
+            user=user,
+            amount=amount,
+            sender_address=wallet_address,
             merchant_address=merchant_address,
-            status="pending"
+            network=network,
+            status="pending",
         )
 
         comment = f"TOPUP:{deposit.reference}"
@@ -3777,12 +3767,6 @@ def create_ton_topup(request):
             comment.encode("utf-8")
         ).decode("ascii")
 
-        logger.warning(
-            "[TON TOPUP DEBUG] created deposit id=%s network=%s amount_nano=%s "
-            "merchant_suffix=%s reference_present=%s",
-            deposit.id, network, nano_amount, merchant_address[-8:] if merchant_address else "",
-            bool(deposit.reference),
-        )
         return Response({
             "status": "pending",
             "deposit_id": str(deposit.id),
@@ -3860,19 +3844,10 @@ def confirm_ton_topup(request):
         )
 
 
-    network = str(
-        getattr(
-            settings,
-            "TON_NETWORK",
-            os.getenv("TON_NETWORK","-239")
-        )
-    ).strip()
-
-    if network not in {"-239","-3"}:
-        return Response(
-            {"error":"Invalid TON network configuration"},
-            status=500,
-        )
+    # Verify on the same network used when the deposit was created.
+    network = str(getattr(deposit, "network", "-239") or "-239").strip()
+    if network not in {"-239", "-3"}:
+        return Response({"error": "Invalid TON network saved for this deposit"}, status=500)
 
     try:
         message_hash = _get_external_message_hash(
