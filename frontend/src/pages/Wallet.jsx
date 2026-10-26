@@ -61,6 +61,37 @@ const shortenMiddle = (value, start = 6, end = 6) => {
 };
 
 
+// ======================================================
+// NETWORK NORMALIZATION HELPER
+// ======================================================
+
+/**
+ * Normalize a TON network value into the canonical "-239" (Mainnet)
+ * or "-3" (Testnet) string form.
+ *
+ * TON Connect may return the chain as a string ("-239"), a number (-239),
+ * or even a float (-239.0). This helper guarantees a stable string so
+ * comparisons never fail because of type or formatting differences.
+ */
+const normalizeNetwork = (value) => {
+  if (value === null || value === undefined) return null;
+
+  let str = String(value).trim();
+  if (!str) return null;
+
+  // Handle float-like values such as "-239.0" or "-3.0"
+  if (str.includes(".")) {
+    str = str.split(".")[0];
+  }
+
+  // Keep only the sign and digits
+  const match = str.match(/^-?\d+$/);
+  if (!match) return null;
+
+  return str;
+};
+
+
 const CopyIcon = ({ size = 22, className = "" }) => (
   <svg
     className={`copy-icon-svg ${className}`.trim()}
@@ -109,12 +140,6 @@ export default function Wallet() {
   const tonWallet = useTonWallet();
   // this variable include open wallet list and disconnect wallet
   const [tonConnectUI] = useTonConnectUI();
-  // get address wallet from wallet 
-  // const address = useMemo(
-  //   () => tonWallet?.account?.address,
-  //   [tonWallet]
-  // );
-
 
   // Real wallet only: never use a hardcoded address for payments.
   // Localhost must use the same real TonConnect flow as production.
@@ -123,9 +148,6 @@ export default function Wallet() {
   const isTonWalletConnected = Boolean(
     tonConnectUI.connected && address
   );
-
-  
-
 
   // show address wallet in ui
   const displayAddress = useTonAddress();
@@ -1530,9 +1552,10 @@ const renderTransactionsPage = () => {
     const walletAddress = tonWallet?.account?.address || null;
     const amountText = String(topupAmount).trim();
     const rawWalletChain = tonWallet?.account?.chain;
-    const walletNetwork = rawWalletChain == null
-      ? null
-      : String(rawWalletChain).trim();
+
+    // Normalize the wallet network into a canonical "-239" or "-3" string.
+    const walletNetwork = normalizeNetwork(rawWalletChain);
+
     const diagnosticId = `TOPUP-${Date.now()}`;
 
     console.group(`[${diagnosticId}] TON TOPUP DIAGNOSTICS`);
@@ -1541,7 +1564,7 @@ const renderTransactionsPage = () => {
       walletAddressPresent: Boolean(walletAddress),
       walletChainRaw: rawWalletChain,
       walletChainType: typeof rawWalletChain,
-      walletNetwork,
+      walletNetworkNormalized: walletNetwork,
       diagnosticOnly: TOPUP_DIAGNOSTIC_ONLY,
     });
     console.log("02. Requested amount", {
@@ -1589,11 +1612,20 @@ const renderTransactionsPage = () => {
       console.log("03. POST /ton/topup/create/", {
         amount: amountText,
         walletAddressPresent: Boolean(walletAddress),
-        walletNetwork,
+        walletNetworkRaw: rawWalletChain,
+        walletNetworkNormalized: walletNetwork,
       });
 
       if (!walletNetwork || !["-239", "-3"].includes(walletNetwork)) {
-        throw new Error(`Unsupported or missing TON wallet network: ${walletNetwork ?? "missing"}`);
+        console.error(`[${diagnosticId}] Unsupported wallet network`, {
+          raw: rawWalletChain,
+          rawType: typeof rawWalletChain,
+          normalized: walletNetwork,
+        });
+        throw new Error(
+          `Unsupported or missing TON wallet network: ${walletNetwork ?? "missing"}. ` +
+          `Please ensure your wallet is on Mainnet (-239) or Testnet (-3).`
+        );
       }
 
       const response = await api.post("/ton/topup/create/", {
@@ -1627,16 +1659,14 @@ const renderTransactionsPage = () => {
         !deposit?.reference ||
         !deposit?.transaction?.messages?.[0]
       ) {
-        console.error(`[${diagnosticId}] Invalid create response structure`);
+        console.error(`[${diagnosticId}] Invalid create response structure`, deposit);
         throw new Error("Invalid Top Up response from server. Check backend response logs.");
       }
 
-      const serverNetwork = deposit.network == null
-        ? null
-        : String(deposit.network).trim();
-      const normalizedWalletNetwork = walletNetwork == null
-        ? null
-        : String(walletNetwork).trim();
+      // Normalize the server-returned network as well before comparing.
+      const serverNetwork = normalizeNetwork(deposit.network);
+      const normalizedWalletNetwork = normalizeNetwork(walletNetwork);
+
       const networksMatch = Boolean(
         serverNetwork &&
         normalizedWalletNetwork &&
@@ -1646,37 +1676,48 @@ const renderTransactionsPage = () => {
       console.group(`[${diagnosticId}] NETWORK COMPARISON`);
       console.table([
         {
-          source: "Backend",
-          network: serverNetwork ?? "missing",
+          source: "Backend (server)",
+          rawValue: deposit.network,
+          rawType: typeof deposit.network,
+          normalized: serverNetwork,
           isMainnet: serverNetwork === "-239",
           isTestnet: serverNetwork === "-3",
+          isValid: ["-239", "-3"].includes(serverNetwork),
         },
         {
           source: "TonConnect wallet",
-          network: normalizedWalletNetwork ?? "missing",
+          rawValue: rawWalletChain,
+          rawType: typeof rawWalletChain,
+          normalized: normalizedWalletNetwork,
           isMainnet: normalizedWalletNetwork === "-239",
           isTestnet: normalizedWalletNetwork === "-3",
+          isValid: ["-239", "-3"].includes(normalizedWalletNetwork),
         },
       ]);
       console.log("Networks match:", networksMatch);
-      console.log("Raw wallet chain:", rawWalletChain);
+      console.log("Raw wallet chain:", rawWalletChain, "Type:", typeof rawWalletChain);
+      console.log("Normalized wallet network:", normalizedWalletNetwork);
+      console.log("Normalized server network:", serverNetwork);
       console.log("Expected Mainnet ID: -239; Testnet ID: -3");
       console.groupEnd();
 
       if (!networksMatch) {
         console.error(`[${diagnosticId}] NETWORK MISMATCH — PAYMENT BLOCKED`, {
           serverNetwork,
+          serverNetworkRaw: deposit.network,
           walletNetwork: normalizedWalletNetwork,
           walletChainRaw: rawWalletChain,
           walletChainType: typeof rawWalletChain,
           connected: Boolean(tonConnectUI.connected),
           expectedMainnet: "-239",
           expectedTestnet: "-3",
+          hint: "Switch your TON wallet to the same network as the server.",
         });
         throw new Error(
           `Wallet network does not match the server TON network. ` +
           `Server=${serverNetwork ?? "missing"}, ` +
-          `Wallet=${normalizedWalletNetwork ?? "missing"}.`
+          `Wallet=${normalizedWalletNetwork ?? "missing"}. ` +
+          `Please switch your wallet to ${serverNetwork === "-239" ? "Mainnet" : "Testnet"} and try again.`
         );
       }
 
@@ -1688,7 +1729,9 @@ const renderTransactionsPage = () => {
       console.group(`[${diagnosticId}] TRANSACTION VALIDATION`);
       console.log("05. Transaction metadata", {
         recipientPresent: Boolean(firstMessage.address),
+        recipient: firstMessage.address,
         amountNanoPresent: Boolean(amountNano),
+        amountNano,
         amountNanoIsValid,
         validUntil: deposit.transaction.validUntil,
         validUntilIsValid: Number.isFinite(validUntil),
@@ -2192,6 +2235,7 @@ const renderTransactionsPage = () => {
 )}
 
        
+        
 
        
 
@@ -2227,7 +2271,7 @@ const renderTransactionsPage = () => {
 
           <>
 
-     
+      
 
 
 
