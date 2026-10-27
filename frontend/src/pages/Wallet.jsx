@@ -2204,12 +2204,9 @@ const renderTransactionsPage = () => {
           <div className="wallet-connect-state">
 
             {/* show button ton connect */}
-            {!LOCAL_MODE && (
             <div className="connect-button-wrapper">
               <TonConnectButton />
             </div>
-            )
-            }
             <p className="wallet-connect-hint">
               Connect your TON wallet to see your balance,
               lock status and withdrawal progress.
