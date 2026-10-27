@@ -195,9 +195,8 @@ export default function Purchase() {
   const [internalBalanceLoading, setInternalBalanceLoading] = useState(false);
 
   const [internalBalanceError, setInternalBalanceError] = useState("");
-  const [localBuyLoading, setLocalBuyLoading] = useState(false);
-  const [localBuyError, setLocalBuyError] = useState("");
-  const [localDemoInvoices, setLocalDemoInvoices] = useState([]);
+  const [internalBuyLoading, setInternalBuyLoading] = useState(false);
+  const [internalBuyError, setInternalBuyError] = useState("");
   const localDev = ["localhost", "127.0.0.1"].includes(window.location.hostname);
   const localWalletAddress = walletAddress || (
     localDev ? "UQAnSyNFHfwJqSsmWefsaBvzIv3LLfsfP4qxf3DjEMVLsztU" : null
@@ -489,14 +488,6 @@ export default function Purchase() {
     return () => { active = false; };
 
   }, [localWalletAddress]);
-
-  useEffect(() => {
-    if (!localDev || !localWalletAddress) return;
-    api.get("/purchase/local-internal-test/", {
-      params: { wallet_address: localWalletAddress },
-    }).then(({ data }) => setLocalDemoInvoices(data.invoices || []))
-      .catch(() => {});
-  }, [localDev, localWalletAddress]);
 
   // LOAD INVOICES
 
@@ -970,49 +961,90 @@ export default function Purchase() {
 
   }, [walletAddress]);
 
-  // DEBUG-ONLY purchase using app's internal TON ledger (no on-chain transfer).
-  async function buyWithInternalTonLocal() {
-    setLocalBuyError("");
-    const amount = Number(tonAmount);
-    if (!localWalletAddress || !Number.isFinite(amount) || amount <= 0) {
-      setLocalBuyError("Select a valid TON amount first.");
+  async function buyWithWalletBalance() {
+    setInternalBuyError("");
+
+    if (!walletAddress) {
+      try {
+        sessionStorage.setItem(
+          STAKE_DRAFT_KEY,
+          JSON.stringify({ tonAmount, selectedOutput })
+        );
+        sessionStorage.setItem(WALLET_RETURN_TO_KEY, "/stake");
+      } catch (error) {
+        console.warn("Could not save Stake return state:", error);
+      }
+      navigate("/wallet", {
+        state: { returnTo: "/stake", reason: "stake_requires_wallet" },
+      });
       return;
     }
-    setLocalBuyLoading(true);
+
+    if (!telegramId) {
+      setInternalBuyError("Telegram ID was not detected. Please open the Mini App inside Telegram.");
+      return;
+    }
+
+    const amountText = String(tonAmount).trim();
+    const amount = Number(amountText);
+
+    if (!/^(?:0|[1-9]\d*)(?:\.\d{1,8})?$/.test(amountText) || !(amount > 0)) {
+      setInternalBuyError("Enter a valid TON amount (up to 8 decimals).");
+      return;
+    }
+
+    setInternalBuyLoading(true);
+
     try {
-      // Always re-fetch balance before asking for confirmation.
-      const check = await api.get("/purchase/local-internal-test/", {
-        params: { wallet_address: localWalletAddress },
-      });
-      const available = Number(check.data.ton_balance);
+      const balanceRes = await api.get(`/wallet/${encodeURIComponent(walletAddress)}/`);
+      const available = Number(balanceRes?.data?.ton_balance);
+
+      if (!Number.isFinite(available)) {
+        throw new Error("Could not load your wallet balance.");
+      }
+
       setInternalTonBalance(available);
-      setLocalDemoInvoices(check.data.invoices || []);
-      if (!Number.isFinite(available) || available < amount) {
-        setLocalBuyError(`Insufficient internal TON balance. Available: ${available} TON`);
+
+      if (available < amount) {
+        const missing = Math.ceil((amount - available) * 1e9) / 1e9;
+        navigate("/wallet", {
+          state: {
+            topupAmount: String(missing),
+            returnTo: "/stake",
+          },
+        });
         return;
       }
+
       const accepted = window.confirm(
-        `LOCAL DEMO ONLY\nDeduct ${amount} TON from your app Wallet balance?\n` +
-        `Available: ${available} TON\nReceive: ${selectedOutput}\nNo real blockchain transaction will occur.`
+        `Buy ${outputLabel} with ${amountText} TON from your wallet balance?\n` +
+        `Available: ${available} TON`
       );
       if (!accepted) return;
-      const requestKey = crypto.randomUUID();
-      const response = await api.post("/purchase/local-internal-test/", {
-        wallet_address: localWalletAddress,
-        amount: String(tonAmount),
+
+      const response = await api.post("/purchase/internal/", {
+        wallet_address: walletAddress,
+        telegram_id: telegramId,
+        telegram_username: telegramUsername,
+        amount: amountText,
         output_asset: selectedOutput,
-        request_key: requestKey,
+        request_key: crypto.randomUUID(),
       });
-      setInternalTonBalance(Number(response.data.ton_balance));
-      const refreshed = await api.get("/purchase/local-internal-test/", {
-        params: { wallet_address: localWalletAddress },
-      });
-      setLocalDemoInvoices(refreshed.data.invoices || []);
-      showSuccess(`Demo invoice ${response.data.invoice_no} created. ${amount} internal TON deducted.`);
+
+      const nextBalance = Number(response?.data?.ton_balance);
+      if (Number.isFinite(nextBalance)) setInternalTonBalance(nextBalance);
+
+      showSuccess(`✅ Purchase completed. Invoice ${response?.data?.invoice?.invoice_no || ""}`);
+      await loadInvoices();
     } catch (error) {
-      setLocalBuyError(error?.response?.data?.error || error?.message || "Could not complete local test");
+      console.error("Wallet balance purchase error:", getErrorDetails(error));
+      setInternalBuyError(
+        error?.response?.data?.error ||
+        error?.message ||
+        "Could not complete purchase."
+      );
     } finally {
-      setLocalBuyLoading(false);
+      setInternalBuyLoading(false);
     }
   }
 
@@ -2288,72 +2320,45 @@ export default function Purchase() {
 
             </div>
 
-            {!localDev && <button
+            <button
 
-              onClick={payAndRegister}
+              type="button"
+
+              onClick={buyWithWalletBalance}
 
               className="convert-btn"
 
-              disabled={loading || confirmingPayment || balanceLoading}
+              disabled={internalBuyLoading || internalBalanceLoading}
 
             >
 
-              {loading
+              {internalBuyLoading
 
                 ? "Processing..."
 
-                : confirmingPayment
+                : !walletAddress
 
-                  ? "Confirming Previous Payment..."
+                  ? "Connect Wallet to Stake"
 
-                  : !walletAddress
+                  : internalBalanceLoading
 
-                    ? "Connect Wallet to Stake"
+                    ? "Checking Balance..."
 
-                      : balanceLoading
-
-                      ? "Checking Balance..."
-
-                      : walletBalance === null
-
-                      ? "Check Wallet Balance"
-
-                      : walletBalance < Number(tonAmount) + 0.05
+                    : internalTonBalance !== null && internalTonBalance < Number(tonAmount)
 
                       ? "Insufficient Balance — Top Up"
 
                       : `Stake TON → ${outputLabel}`}
 
-            </button>}
-            {localDev && (
-              <>
-                <button
-                  type="button"
-                  className="convert-btn"
-                  style={{ marginTop: 12, background: "#205b72" }}
-                  onClick={buyWithInternalTonLocal}
-                  disabled={localBuyLoading || internalBalanceLoading || !tonAmount}
-                >
-                  {localBuyLoading ? "Checking internal balance..." : `Use App Wallet TON (${selectedOutput}) — LOCAL TEST`}
-                </button>
-                {localBuyError && <p role="alert" style={{ color: "#ff8888" }}>{localBuyError}</p>}
-              </>
+            </button>
+
+            {internalBuyError && (
+
+              <p role="alert" style={{ color: "#ff8888", marginTop: 10 }}>{internalBuyError}</p>
+
             )}
+
           </div>
-          {localDev && localDemoInvoices.length > 0 && (
-            <div className="invoices-section">
-              <h3 className="invoices-title">Local Demo Invoices (No On-chain Payment)</h3>
-              <div className="invoices-grid">
-                {localDemoInvoices.map((invoice) => (
-                  <div className="invoice-card currency-ton" key={invoice.invoice_no}>
-                    <strong>{invoice.invoice_no}</strong>
-                    <div>{invoice.ton_amount} TON → {invoice.output_asset}</div>
-                    <small>LOCAL DEMO · {new Date(invoice.created_at).toLocaleString()}</small>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
           {/* =========================
               INVOICES
 

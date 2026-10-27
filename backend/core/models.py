@@ -725,6 +725,11 @@ class TonDeposit(models.Model):
         max_length=128
     )
 
+    network = models.CharField(
+        max_length=10,
+        default="-239"
+    )
+
     tx_hash = models.CharField(
         max_length=128,
         null=True,

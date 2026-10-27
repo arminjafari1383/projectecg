@@ -1532,8 +1532,6 @@ const renderTransactionsPage = () => {
   // Resume a submitted on-chain payment until Django confirms it.
   // The signed BOC is not a secret; sessionStorage survives a page reload.
   const verifySubmittedTopUp = useCallback(async (payment) => {
-    const trace = payment?.trace_id || "RESTORED-TOPUP";
-    console.info(`[TON-TRACE ${trace}] VERIFY_START`, {hasDepositId: Boolean(payment?.deposit_id), hasBoc: Boolean(payment?.boc), walletPresent: Boolean(payment?.wallet_address)});
     if (!payment?.deposit_id || !payment?.boc || verificationRunning.current) return;
     verificationRunning.current = true;
     setTopupLoading(true);
@@ -1543,14 +1541,12 @@ const renderTransactionsPage = () => {
     try {
       // Indexers can take some time to observe a blockchain transaction.
       for (let attempt = 0; attempt < 12; attempt += 1) {
-        console.info(`[TON-TRACE ${trace}] VERIFY_ATTEMPT`, {attempt: attempt + 1, maxAttempts: 12});
         try {
           const response = await api.post("/ton/topup/confirm/", {
             deposit_id: payment.deposit_id,
             boc: payment.boc,
             wallet_address: payment.wallet_address,
-          }, {headers: {"X-Ton-Debug-Id": trace}});
-          console.info(`[TON-TRACE ${trace}] VERIFY_RESPONSE`, {httpStatus: response.status, paymentStatus: response.data?.status, alreadyProcessed: response.data?.already_processed});
+          });
           if (response.data?.status === "confirmed") {
             sessionStorage.removeItem("pending_ton_topup");
             setTopupStatus("TON Top Up confirmed and credited to your internal wallet.");
@@ -1561,8 +1557,8 @@ const renderTransactionsPage = () => {
           }
           setTopupStatus("Payment submitted. Waiting for blockchain confirmation...");
         } catch (err) {
-          console.error(`[TON-TRACE ${trace}] VERIFY_ERROR`, {httpStatus: err?.response?.status ?? null, code: err?.response?.data?.code ?? err?.code ?? null, message: err?.response?.data?.error ?? err?.message});
-          if (err?.response?.status === 409 || err?.response?.status === 400) {
+          if ([400, 403, 404, 409].includes(err?.response?.status)) {
+            sessionStorage.removeItem("pending_ton_topup");
             throw new Error(err?.response?.data?.error || "Top Up verification failed.");
           }
           // Transient TON indexer/API errors: retry, never credit locally.
@@ -1595,10 +1591,19 @@ const renderTransactionsPage = () => {
   const walletAddress = tonWallet?.account?.address || null;
   const amountText = String(topupAmount).trim();
   
-  // Never assume Mainnet when TON Connect omits the chain.
+  // استخراج chain با fallback به Mainnet
   const rawWalletChain = tonWallet?.account?.chain;
-  const walletNetwork = normalizeNetwork(rawWalletChain);
-
+  let walletNetwork = normalizeNetwork(rawWalletChain);
+  
+  // اگر کیف پول chain برنگرداند، پیش‌فرض Mainnet
+  if (!walletNetwork) {
+    console.warn(
+      "[TON TOPUP] Wallet did not return a chain value. " +
+      "Defaulting to Mainnet (-239). Raw value:", rawWalletChain
+    );
+    walletNetwork = "-239";
+  }
+  
   const diagnosticId = `TOPUP-${Date.now()}`;
 
   console.group(`[${diagnosticId}] TON TOPUP DIAGNOSTICS`);
@@ -1609,7 +1614,6 @@ const renderTransactionsPage = () => {
     walletChainType: typeof rawWalletChain,
     walletNetworkNormalized: walletNetwork,
   });
-  console.info(`[TON-TRACE ${diagnosticId}] INITIAL_STATE`, {expectedNetwork: "-239", normalizedChain: walletNetwork, rawChain: rawWalletChain ?? null, connected: tonConnectUI.connected, hasPending: Boolean(sessionStorage.getItem("pending_ton_topup"))});
   console.groupEnd();
 
   if (!walletAddress || !tonConnectUI.connected) {
@@ -1641,22 +1645,18 @@ const renderTransactionsPage = () => {
   setTopupStatus("");
 
   try {
-    if (walletNetwork !== "-239") {
+    if (!["-239", "-3"].includes(walletNetwork)) {
       throw new Error(
-        walletNetwork === "-3"
-          ? "Your TON wallet is on Testnet. Switch to Mainnet and reconnect before paying."
-          : "Cannot verify TON Mainnet. Reconnect a wallet that reports Mainnet (-239)."
+        `Unsupported TON wallet network: ${walletNetwork}. ` +
+        `Expected -239 (Mainnet) or -3 (Testnet).`
       );
     }
 
-    console.info(`[TON-TRACE ${diagnosticId}] CREATE_REQUEST`, {endpoint: "/ton/topup/create/", requestedNetwork: walletNetwork, expectedNetwork: "-239", amountTon: amountText, walletPresent: Boolean(walletAddress)});
-    const startedAt = Date.now();
     const response = await api.post("/ton/topup/create/", {
       wallet_address: walletAddress,
       amount: amountText,
       network: walletNetwork,
-    }, {headers: {"X-Ton-Debug-Id": diagnosticId}});
-    console.info(`[TON-TRACE ${diagnosticId}] CREATE_HTTP`, {httpStatus: response.status, elapsedMs: Date.now() - startedAt});
+    });
     const deposit = response.data;
 
     console.log("Backend response:", {
@@ -1695,30 +1695,11 @@ const renderTransactionsPage = () => {
     ]);
     console.groupEnd();
 
-    const networkDebug = {
-      traceId: diagnosticId,
-      walletRawChain: rawWalletChain ?? null,
-      walletRawType: typeof rawWalletChain,
-      walletNetworkNormalized: walletNetwork ?? null,
-      serverRawNetwork: deposit?.network ?? null,
-      serverRawType: typeof deposit?.network,
-      serverNetworkNormalized: serverNetwork ?? null,
-      expectedMainnet: "-239",
-      walletIsMainnet: walletNetwork === "-239",
-      serverIsMainnet: serverNetwork === "-239",
-      networksMatch: Boolean(serverNetwork) && serverNetwork === walletNetwork,
-    };
-
-    console.info(`[TON-TRACE ${diagnosticId}] NETWORK_DECISION`, networkDebug);
-
-    // Real-money top-ups are allowed only when BOTH sides explicitly report Mainnet.
-    if (walletNetwork !== "-239" || serverNetwork !== "-239" || serverNetwork !== walletNetwork) {
-      console.error(`[TON-TRACE ${diagnosticId}] NETWORK_MISMATCH`, networkDebug);
+    if (!serverNetwork || serverNetwork !== walletNetwork) {
       throw new Error(
-        `TON Mainnet network check failed. ` +
-        `Server=${serverNetwork ?? "missing"}, ` +
-        `Wallet=${walletNetwork ?? "missing"}. ` +
-        `Expected both values to be -239. Check the NETWORK_MISMATCH console log.`
+        `Wallet network does not match the server TON network. ` +
+        `Server=${serverNetwork ?? "missing"}, Wallet=${walletNetwork}. ` +
+        `Please switch your wallet to ${serverNetwork === "-3" ? "Testnet" : "Mainnet"} and try again.`
       );
     }
 
@@ -1747,9 +1728,7 @@ const renderTransactionsPage = () => {
       })),
     };
 
-    console.info(`[TON-TRACE ${diagnosticId}] SEND_TRANSACTION_START`, {messageCount: transaction.messages.length, validUntil, amountNano, recipientPresent: Boolean(firstMessage.address)});
     const result = await tonConnectUI.sendTransaction(transaction);
-    console.info(`[TON-TRACE ${diagnosticId}] SEND_TRANSACTION_RESULT`, {hasBoc: Boolean(result?.boc)});
 
     if (!result?.boc) {
       throw new Error("Wallet did not return a signed transaction.");
@@ -1759,7 +1738,6 @@ const renderTransactionsPage = () => {
       deposit_id: deposit.deposit_id,
       boc: result.boc,
       wallet_address: walletAddress,
-      trace_id: diagnosticId,
     };
 
     sessionStorage.setItem("pending_ton_topup", JSON.stringify(payment));
@@ -1771,12 +1749,6 @@ const renderTransactionsPage = () => {
       message: error?.message,
       httpStatus: error?.response?.status,
       serverError: error?.response?.data?.error,
-      serverCode: error?.response?.data?.code,
-      responseNetwork: error?.response?.data?.expected_network,
-      walletRawChain: rawWalletChain ?? null,
-      walletNormalized: walletNetwork,
-      expectedMainnet: "-239",
-      stack: error?.response ? undefined : error?.stack,
     });
 
     setTopupError(

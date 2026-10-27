@@ -9,6 +9,7 @@ urlpatterns = [
     path("social-reward/", views.social_reward_claim, name="social_reward_claim"),
     path("reward-cap/", views.reward_cap, name="reward_cap"),
     path("purchase/local-internal-test/", views.local_internal_purchase, name="local_internal_purchase"),
+    path("purchase/internal/", views.internal_ton_purchase, name="internal_ton_purchase"),
 
      path("wallet/transactions/",views.wallet_transactions,name="wallet_transactions",),
 

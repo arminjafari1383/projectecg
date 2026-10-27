@@ -3667,6 +3667,19 @@ def create_ton_topup(request):
         if network not in {"-239", "-3"}:
             return Response({"error": "Unsupported TON wallet network; expected -239 (Mainnet) or -3 (Testnet)."}, status=400)
 
+        server_network = str(settings.TON_NETWORK or "-239").strip()
+        if network != server_network:
+            return Response(
+                {
+                    "error": (
+                        "Your wallet is on the wrong TON network. "
+                        f"Switch it to {'Testnet' if server_network == '-3' else 'Mainnet'} and try again."
+                    ),
+                    "network": server_network,
+                },
+                status=400,
+            )
+
         try:
             amount = Decimal(
                 str(request.data.get("amount") or "")
@@ -3749,8 +3762,6 @@ def create_ton_topup(request):
             amount * Decimal("1000000000")
         )
 
-        # Bind this deposit to the network reported by the connected TON wallet.
-        # Confirmation below uses this stored value, not a global forced network.
         deposit = TonDeposit.objects.create(
             user=user,
             amount=amount,
@@ -4253,6 +4264,129 @@ def local_internal_purchase(request):
         wallet.refresh_from_db(fields=["ton_balance"])
     return Response({"status": "LOCAL_DEMO", "invoice_no": invoice.invoice_no,
                      "ton_balance": str(wallet.ton_balance), "already_processed": False}, status=201)
+
+
+# ============================================================
+# PURCHASE WITH INTERNAL TON BALANCE (credited by Top Up)
+# ============================================================
+@api_view(["POST"])
+def internal_ton_purchase(request):
+    try:
+        identity = _telegram_identity_from_request(request)
+    except ValueError as exc:
+        return Response({"error": str(exc)}, status=400)
+
+    wallet_address = str(request.data.get("wallet_address") or "").strip()
+    if not wallet_address:
+        return Response({"error": "wallet_address required"}, status=400)
+
+    user = AppUser.objects.filter(telegram_id=identity["telegram_id"]).first()
+    if user is None or not _public_wallet_address(user):
+        return Response({"error": "Connect your TON wallet first"}, status=404)
+
+    try:
+        if _ton_address_to_raw(user.wallet_address) != _ton_address_to_raw(wallet_address):
+            return Response({"error": "Wallet does not match this account"}, status=403)
+    except ValueError:
+        return Response({"error": "Invalid TON address"}, status=400)
+
+    try:
+        amount = Decimal(str(request.data.get("amount") or ""))
+    except (InvalidOperation, ValueError):
+        return Response({"error": "Invalid TON amount"}, status=400)
+
+    # Purchase.ton_amount keeps 8 decimal places.
+    if (
+        not amount.is_finite()
+        or amount <= 0
+        or amount.as_tuple().exponent < -8
+        or amount > Decimal("1000000")
+    ):
+        return Response({"error": "Invalid TON amount"}, status=400)
+
+    output_asset = str(request.data.get("output_asset") or "ECG").strip().upper()
+    if output_asset not in {"ECG", "USDT"}:
+        return Response({"error": "Invalid output asset"}, status=400)
+
+    try:
+        request_key = uuid.UUID(str(request.data.get("request_key") or ""))
+    except ValueError:
+        return Response({"error": "Valid request_key required"}, status=400)
+
+    receipt = f"WALLET:{request_key.hex}"
+    rate = fetch_ton_usd_rate()
+
+    try:
+        with transaction.atomic():
+            existing = Purchase.objects.filter(ton_tx_hash=receipt).first()
+            if existing:
+                if existing.user_id != user.id:
+                    return Response({"error": "Request key already used"}, status=409)
+                wallet = Wallet.objects.get(user=user)
+                return Response({
+                    "status": "completed",
+                    "already_processed": True,
+                    "ton_balance": str(wallet.ton_balance),
+                    "invoice": PurchaseSerializer(existing).data,
+                }, status=200)
+
+            wallet, _ = Wallet.objects.select_for_update().get_or_create(user=user)
+            balance = Decimal(str(wallet.ton_balance or 0))
+
+            if balance < amount:
+                return Response(
+                    {
+                        "error": "Insufficient wallet balance",
+                        "ton_balance": str(balance),
+                    },
+                    status=409,
+                )
+
+            wallet.ton_balance = balance - amount
+            wallet.save(update_fields=["ton_balance"])
+
+            purchase = register_purchase(
+                user,
+                amount,
+                receipt,
+                output_asset=output_asset,
+                ton_usd_rate=rate,
+            )
+
+            WalletTransaction.objects.create(
+                user=user,
+                transaction_type="purchase",
+                amount=amount,
+                asset="TON",
+                received_amount=purchase.output_amount,
+                received_asset=output_asset,
+                status="COMPLETED",
+                reference=purchase.invoice_no,
+            )
+
+    except ValueError as exc:
+        return Response({"error": str(exc)}, status=400)
+    except IntegrityError:
+        logger.exception("INTERNAL PURCHASE CONFLICT user=%s", user.id)
+        return Response({"error": "Purchase conflict, please try again"}, status=409)
+    except Exception:
+        logger.exception("INTERNAL PURCHASE ERROR user=%s", user.id)
+        return Response({"error": "Could not complete purchase"}, status=500)
+
+    logger.info(
+        "[INTERNAL_BUY] user=%s amount=%s asset=%s invoice=%s",
+        user.id,
+        amount,
+        output_asset,
+        purchase.invoice_no,
+    )
+
+    return Response({
+        "status": "completed",
+        "already_processed": False,
+        "ton_balance": str(wallet.ton_balance),
+        "invoice": PurchaseSerializer(purchase).data,
+    }, status=201)
 
 # ============================================================
 # SOCIAL REWARDS — LOCAL DEVELOPMENT DEMO
