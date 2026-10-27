@@ -1695,17 +1695,30 @@ const renderTransactionsPage = () => {
     ]);
     console.groupEnd();
 
-    console.info(`[TON-TRACE ${diagnosticId}] NETWORK_DECISION`, {
-      walletRaw: rawWalletChain ?? null, walletRawType: typeof rawWalletChain,
-      walletNormalized: walletNetwork, serverRaw: deposit.network ?? null,
-      serverRawType: typeof deposit.network, serverNormalized: serverNetwork,
-      expectedMainnet: "-239", matches: serverNetwork === walletNetwork && serverNetwork === "-239"
-    });
-    if (serverNetwork !== "-239" || serverNetwork !== walletNetwork) {
+    const networkDebug = {
+      traceId: diagnosticId,
+      walletRawChain: rawWalletChain ?? null,
+      walletRawType: typeof rawWalletChain,
+      walletNetworkNormalized: walletNetwork ?? null,
+      serverRawNetwork: deposit?.network ?? null,
+      serverRawType: typeof deposit?.network,
+      serverNetworkNormalized: serverNetwork ?? null,
+      expectedMainnet: "-239",
+      walletIsMainnet: walletNetwork === "-239",
+      serverIsMainnet: serverNetwork === "-239",
+      networksMatch: Boolean(serverNetwork) && serverNetwork === walletNetwork,
+    };
+
+    console.info(`[TON-TRACE ${diagnosticId}] NETWORK_DECISION`, networkDebug);
+
+    // Real-money top-ups are allowed only when BOTH sides explicitly report Mainnet.
+    if (walletNetwork !== "-239" || serverNetwork !== "-239" || serverNetwork !== walletNetwork) {
+      console.error(`[TON-TRACE ${diagnosticId}] NETWORK_MISMATCH`, networkDebug);
       throw new Error(
-        `Wallet network does not match the server TON network. ` +
-        `Server=${serverNetwork ?? "missing"}, Wallet=${walletNetwork}. ` +
-        `Please switch your wallet to ${serverNetwork === "-3" ? "Testnet" : "Mainnet"} and try again.`
+        `TON Mainnet network check failed. ` +
+        `Server=${serverNetwork ?? "missing"}, ` +
+        `Wallet=${walletNetwork ?? "missing"}. ` +
+        `Expected both values to be -239. Check the NETWORK_MISMATCH console log.`
       );
     }
 
