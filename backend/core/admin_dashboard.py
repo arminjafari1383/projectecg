@@ -6,7 +6,7 @@ from decimal import Decimal
 import pyotp
 
 from django.core import signing
-from django.db.models import Count, Sum,Case,IntegerField,When
+from django.db.models import Count, Sum, Case, IntegerField, When
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
@@ -22,7 +22,6 @@ from .models import (
     WithdrawRequest,
     Ledger,
     PendingPurchase,
-    Purchase,
     PurchaseRequest
 )
 from .services import register_purchase
@@ -185,41 +184,35 @@ def admin_system_dashboard(request):
             "referral_epl_total": _money(_ledger_sum(user, "REF_BONUS")),
         })
 
-        purchase_requests = []
-        request_qs = (
-            PurchaseRequest.objects
-            .select_related("user", "purchase")
-            .order_by(
-                Case(When(status=PurchaseRequest.STATUS_PENDING, then=0),
-                    default=1, output_field=IntegerField()),
-                "-created_at",
-            )[:500]
-        )
-        for item in request_qs:
-            purchase_requests.append({
-                "id": item.id,
-                "status": item.status,
-                "telegram_id": item.user.telegram_id,
-                "username": item.user.telegram_username or "",
-                "wallet_address": item.wallet_address or item.user.wallet_address or "",
-                "merchant_address": item.merchant_address or "",
-                "ton_amount": _money(item.ton_amount),
-                "ton_usd_rate": _money(item.ton_usd_rate),
-                "usd_value": _money(item.ton_amount * item.ton_usd_rate),
-                "output_asset": item.output_asset,
-                "receipt_hash": item.receipt_hash,
-                "boc": item.boc or "",
-                "invoice_no": item.purchase.invoice_no if item.purchase_id else "",
-                "review_note": item.review_note or "",
-                "created_at": item.created_at,
-                "reviewed_at": item.reviewed_at,
-            })
-
-   
-
-    
-
-    
+    purchase_requests = []
+    request_qs = (
+        PurchaseRequest.objects
+        .select_related("user", "purchase")
+        .order_by(
+            Case(When(status=PurchaseRequest.STATUS_PENDING, then=0),
+                default=1, output_field=IntegerField()),
+            "-created_at",
+        )[:500]
+    )
+    for item in request_qs:
+        purchase_requests.append({
+            "id": item.id,
+            "status": item.status,
+            "telegram_id": item.user.telegram_id,
+            "username": item.user.telegram_username or "",
+            "wallet_address": item.wallet_address or item.user.wallet_address or "",
+            "merchant_address": item.merchant_address or "",
+            "ton_amount": _money(item.ton_amount),
+            "ton_usd_rate": _money(item.ton_usd_rate),
+            "usd_value": _money(item.ton_amount * item.ton_usd_rate),
+            "output_asset": item.output_asset,
+            "receipt_hash": item.receipt_hash,
+            "boc": item.boc or "",
+            "invoice_no": item.purchase.invoice_no if item.purchase_id else "",
+            "review_note": item.review_note or "",
+            "created_at": item.created_at,
+            "reviewed_at": item.reviewed_at,
+        })
 
     withdrawals = []
     withdrawal_qs = (
@@ -290,7 +283,30 @@ def admin_system_dashboard(request):
     referral_epl = Ledger.objects.filter(typ="REF_BONUS").aggregate(total=Sum("amount"))
     timer_epl = Ledger.objects.filter(typ="DAILY_UNLOCK").aggregate(total=Sum("amount"))
 
+    purchases = []
+    for item in Purchase.objects.select_related("user").order_by("-created_at")[:500]:
+        purchases.append({
+            "id": item.id,
+            "invoice_no": item.invoice_no,
+            "username": item.user.telegram_username or "",
+            "wallet_address": item.user.wallet_address or "",
+            "ton_amount": _money(item.ton_amount),
+            "ton_usd_rate": _money(item.ton_usd_rate),
+            "usd_value": _money(item.usd_value),
+            "ecg_value": _money(item.ecg_value),
+            "output_amount": _money(item.output_amount),
+            "output_asset": item.output_asset,
+            "self_profit_5": _money(item.self_profit_5),
+            "profit_asset": item.profit_asset,
+            "tx_hash": item.ton_tx_hash or "",
+            "created_at": item.created_at,
+        })
+
     return Response({
+        "users": users,
+        "purchases": purchases,
+        "purchase_requests": purchase_requests,
+        "withdrawals": withdrawals,
         "summary": {
             "total_users": users_qs.count(),
             "active_users": users_qs.filter(is_active=True).count(),
@@ -366,7 +382,7 @@ def admin_review_purchase(request,purchase_id):
                 item.status = "REJECTED"
                 item.reviewed_at = timezone.now()
                 item.save(
-                    updata_fields=["status","reviewed_at"]
+                    update_fields=["status","reviewed_at"]
                 )
 
                 return Response({
