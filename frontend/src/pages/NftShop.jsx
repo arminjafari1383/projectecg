@@ -74,6 +74,21 @@ const TonIcon = () => (
 
 /* ---------- helpers ---------- */
 
+
+const formatGram = (value) => {
+  const amount = Number(value);
+
+  if (!Number.isFinite(amount)) {
+    return "— GRAM";
+  }
+
+  const rounded = Math.ceil(amount);
+
+  return `${rounded.toLocaleString("en-US")} GRAM`;
+};
+
+
+
 function useCopy() {
   const [copiedKey, setCopiedKey] = useState("");
   const timer = useRef(0);
@@ -190,6 +205,7 @@ export default function NftShop() {
   const [orderError, setOrderError] = useState("");
   const [orderSaving, setOrderSaving] = useState(false);
   const [serverStock, setServerStock] = useState(null);
+  const [gramQuote, setGramQuote] = useState(null);
   const [demoSaving,setDemoSaving] = useState(false);
   const [demoMessage,setDemoMessage] = useState("");
 
@@ -203,10 +219,17 @@ export default function NftShop() {
   }, [state]);
 
   useEffect(() => {
-    api.get("/nft/catalog/")
-      .then((response) => setServerStock(response.data?.verdant || null))
-      .catch(() => setServerStock(null));
-  }, []);
+    api.get("nft/catalog/")
+    .then((response) => {
+      setServerStock(response.data?.verdant || null);
+      setGramQuote(response.data?.unit_price_gram ?? null);
+    })
+
+    .catch(() => {
+      setServerStock(null);
+      setGramQuote(null);
+    });
+  },[]);
 
   const { copiedKey, copy } = useCopy();
 
@@ -483,10 +506,16 @@ const testNftPurchase = async () => {
               <div className="nft-price">
                 <div>
                   <span className="nft-label">{t("shop.price")}</span>
-                  <strong className="nft-price__value">{formatUsd(product.price)}</strong>
+                  <strong className="nft-price__value">{gramQuote !== null ? formatGram(gramQuote) : "- GRAM"}</strong>
                 </div>
                 <div className="nft-price__avail">
-                  <span className="nft-label">{t("shop.available")}</span>
+                  {available > 0 && (
+                      <b>
+                        {gramQuote !== null
+                          ? formatGram(gramQuote)
+                          : "— GRAM"}
+                      </b>
+                    )}
                   <strong>
                     {available}
                     <small> / {product.total}</small>
@@ -612,7 +641,7 @@ const testNftPurchase = async () => {
             <div>
               <strong>{product.name}</strong>
               <span>
-                {t("shop.unitPrice")} · {formatUsd(product.price)}
+                {t("shop.unitPrice")} · {gramQuote !== null ? formatGram(gramQuote) : "— GRAM"}
               </span>
             </div>
           </div>
@@ -647,7 +676,11 @@ const testNftPurchase = async () => {
 
           <div className="order-total">
             <span>{t("shop.orderTotal")}</span>
-            <strong>{formatUsd(qty * product.price)}</strong>
+            <strong>
+              {gramQuote !== null
+                ? formatGram(Number(gramQuote) * qty)
+                : "— GRAM"}
+            </strong>
           </div>
 
           <label className="field">
@@ -798,7 +831,11 @@ const testNftPurchase = async () => {
   <span>
     {orderSaving ? "در حال خرید..." : t("shop.submit")}
   </span>
-  <b>{formatUsd(qty * product.price)}</b>
+  <b>
+  {gramQuote !== null
+    ? formatGram(Number(gramQuote) * qty)
+    : "— GRAM"}
+</b>
 </button>
 
         </form>

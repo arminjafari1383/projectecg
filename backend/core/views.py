@@ -4527,6 +4527,23 @@ def nft_catalog(request):
         or 0
     )
 
+    try:
+        gram_usd_rate = Decimal(str(fetch_ton_usd_rate()))
+
+        if gram_usd_rate <= 0 or not gram_usd_rate.is_finite():
+            raise ValueError("Invalid GRAM/USD rate")
+
+        unit_price_gram = (
+            Decimal("50.00") / gram_usd_rate
+        ).quantize(
+            Decimal("0.000000001"),
+            rounding=ROUND_UP
+        )
+
+    except Exception:
+        gram_usd_rate = None
+        unit_price_gram = None
+
     return Response({
         "verdant": {
             "initial_sold":44,
@@ -4535,7 +4552,22 @@ def nft_catalog(request):
             "available":max(
                 0,200 - 44 - sold - reserved
             ),
-        }
+        },
+
+        "asset":"GRAM",
+        "network":"TON",
+        "unit_price_usd":"50.00",
+        "unit_price_gram":(
+            str(unit_price_gram)
+            if unit_price_gram is not None
+            else None
+        ),
+
+        "gram_usd_rate":(
+            str(gram_usd_rate)
+            if gram_usd_rate is not None
+            else None
+        ),
     })
 
 

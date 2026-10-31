@@ -167,6 +167,7 @@ export default function Purchase() {
   const [selectedOutput, setSelectedOutput] = useState(initialStakeDraft.selectedOutput);
 
   const [invoices, setInvoices] = useState([]);
+  const [invoiceLoadError, setInvoiceLoadError] = useState("");
 
   const [purchaseRequests, setPurchaseRequests] = useState([]);
 
@@ -525,7 +526,12 @@ export default function Purchase() {
 
       });
 
-      setInvoices(Array.isArray(res.data) ? res.data : []);
+      setInvoices((prev) => {
+        const fromApi = Array.isArray(res.data) ? res.data : [];
+        const seen = new Set(fromApi.map((item) => String(item.invoice_no || item.id || "")));
+        return [...fromApi, ...prev.filter((item) => !seen.has(String(item.invoice_no || item.id || "")))];
+      });
+      setInvoiceLoadError("");
 
       try {
 
@@ -554,6 +560,7 @@ export default function Purchase() {
     } catch (error) {
 
       console.error("load invoices error", error);
+      setInvoiceLoadError("Could not refresh invoices. Previously loaded invoices remain visible.");
 
     } finally {
 
@@ -1034,7 +1041,11 @@ export default function Purchase() {
       const nextBalance = Number(response?.data?.ton_balance);
       if (Number.isFinite(nextBalance)) setInternalTonBalance(nextBalance);
 
-      showSuccess(`✅ Purchase completed. Invoice ${response?.data?.invoice?.invoice_no || ""}`);
+      const newlyCreatedInvoice = response?.data?.invoice;
+      if (newlyCreatedInvoice?.invoice_no) {
+        setInvoices((prev) => [newlyCreatedInvoice, ...prev.filter((item) => item.invoice_no !== newlyCreatedInvoice.invoice_no)]);
+      }
+      showSuccess(`✅ Purchase completed. Invoice ${newlyCreatedInvoice?.invoice_no || ""}`);
       await loadInvoices();
     } catch (error) {
       console.error("Wallet balance purchase error:", getErrorDetails(error));
@@ -1375,99 +1386,16 @@ export default function Purchase() {
   // =========================
 
   const allInvoices = useMemo(() => {
-
     const seen = new Set();
-
-    const paidInvoices = [];
-
-    for (const invoice of invoices) {
-
-      if (!invoice || typeof invoice !== "object") {
-
-        continue;
-
-      }
-
-      const invoiceNo = String(invoice.invoice_no || "").trim();
-
-      const txHash = String(invoice.ton_tx_hash || "").trim();
-
-      const tonAmountValue = Number(invoice.ton_amount ?? 0);
-
-      const paymentStatus = String(
-
-        invoice.payment_status ||
-
-        invoice.status ||
-
-        invoice.__status ||
-
-        ""
-
-      ).trim().toUpperCase();
-
-      // فقط فاکتور واقعی و کاملِ پرداخت‌شده نمایش داده شود.
-
-      // فاکتورهای pending/خالی/ناقص در UI نمایش داده نمی‌شوند.
-
-      if (
-
-        invoice.__pending === true ||
-
-        !invoiceNo ||
-
-        invoiceNo.startsWith("PENDING-") ||
-
-        !txHash ||
-
-        txHash === "-" ||
-
-        txHash.startsWith("TEST_") ||
-
-        ["FAILED", "CANCELLED", "CANCELED", "REJECTED", "PENDING", "SAVING"].includes(
-
-          paymentStatus
-
-        ) ||
-
-        !Number.isFinite(tonAmountValue) ||
-
-        tonAmountValue <= 0
-
-      ) {
-
-        continue;
-
-      }
-
-      // اگر همان پرداخت دوبار از state و API برگشت، فقط یک کارت نشان بده.
-
-      const dedupeKey = txHash || invoiceNo;
-
-      if (seen.has(dedupeKey)) {
-
-        continue;
-
-      }
-
-      seen.add(dedupeKey);
-
-      paidInvoices.push({
-
-        ...invoice,
-
-        currency: invoice.currency || "TON",
-
-        __pending: false,
-
-        __status: "PAID",
-
-      });
-
-    }
-
-    return paidInvoices;
-
+    return invoices.filter((invoice) => {
+      if (!invoice || typeof invoice !== "object") return false;
+      // Show every actual invoice returned by the backend, regardless of tx hash.
+      // Do not manufacture PAID status for incomplete/failed purchases.
+      const identity = String(invoice.invoice_no || invoice.id || "").trim();
+      if (!identity || seen.has(identity)) return false;
+      seen.add(identity);
+      return true;
+    });
   }, [invoices]);
 
   function formatInvoiceDate(value) {
@@ -2363,6 +2291,42 @@ export default function Purchase() {
               INVOICES
 
           ========================= */}
+
+          <div className="invoices-section">
+            <div className="invoices-header">
+              <h3 className="invoices-title">Stake Invoices</h3>
+              <button type="button" onClick={() => loadInvoices()} disabled={loading}>
+                {loading ? "Refreshing..." : "Refresh"}
+              </button>
+            </div>
+            {invoiceLoadError && <p role="alert" className="error-text">{invoiceLoadError}</p>}
+            {!loading && allInvoices.length === 0 && !invoiceLoadError && (
+              <p>No purchase invoices found for this account.</p>
+            )}
+            <div className="invoices-grid">
+              {allInvoices.map((invoice) => {
+                const status = String(invoice.payment_status || invoice.status || invoice.__status || "UNKNOWN").toUpperCase();
+                const received = invoice.output_amount ?? invoice.ecg_value ?? null;
+                return (
+                  <div key={invoice.invoice_no || invoice.id} className="invoice-card currency-ton">
+                    <div className="invoice-header">
+                      <div className="invoice-number">
+                        <span className="invoice-label">Stake Invoice</span>
+                        <span className="invoice-id">#{invoice.invoice_no || invoice.id}</span>
+                      </div>
+                      <div className="invoice-status">{status}</div>
+                    </div>
+                    <div className="invoice-body">
+                      <Row label="Date" value={formatInvoiceDate(invoice.created_at || invoice.date)} />
+                      <Row label="Paid" value={`${invoice.ton_amount ?? "—"} ${invoice.currency || "TON"}`} />
+                      <Row label="Received" value={received == null ? "—" : `${received} ${invoice.output_asset || "ECG"}`} />
+                      <Row label="Payment" value={invoice.ton_tx_hash ? "On-chain" : "Internal wallet / not specified"} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
 
                   {purchaseRequests.some((item) => item?.status !== "APPROVED") && (
 
