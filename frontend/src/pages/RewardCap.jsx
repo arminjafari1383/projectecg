@@ -209,10 +209,12 @@ export default function RewardCap() {
   // PROGRESS
   // =====================================================
 
-  // Percentage of 10x Income Cap already consumed
+  // Remaining reward capacity as a percentage of the total active cap.
+  // Each new eligible purchase increases cap by 10x the purchase amount
+  // on the backend. Previously earned rewards remain deducted from it.
   const percent = clampPercent(
     cap > 0
-      ? (received / cap) * 100
+      ? (remaining / cap) * 100
       : 0
   );
 
@@ -228,7 +230,7 @@ export default function RewardCap() {
   const nearCap =
     eligible &&
     !fullCap &&
-    percent >= 80;
+    percent <= 20;
 
   const statusText = !eligible
     ? "Inactive"
@@ -275,7 +277,7 @@ export default function RewardCap() {
           <h2>Your Reward Cap</h2>
 
           <p>
-            10× (Stake + NFT Purchase)
+            Remaining capacity / 10× (Stake + NFT Purchase)
           </p>
         </div>
 
@@ -293,7 +295,7 @@ export default function RewardCap() {
         <svg
           viewBox="0 0 240 140"
           role="img"
-          aria-label="Used Reward Cap percentage"
+          aria-label="Remaining Reward Cap percentage"
         >
           {/* BACKGROUND */}
           <path
@@ -328,7 +330,7 @@ export default function RewardCap() {
           </strong>
 
           <span>
-            {formatTON(received)} received
+            {formatTON(remaining)} available
           </span>
 
           <span>
@@ -336,7 +338,7 @@ export default function RewardCap() {
           </span>
 
           <span>
-            {formatTON(remaining)} remaining
+            {formatTON(received)} already received
           </span>
         </div>
       </div>
