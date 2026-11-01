@@ -241,7 +241,12 @@ export default function NftShop() {
   const soldPct = Math.round((sold / product.total) * 100);
   const maxQty = Math.max(1, Math.min(product.maxPerOrder, available));
 
-  const walletOk = isValidTonAddress(wallet);
+  const walletOk =
+  Boolean(tonwallet?.account?.address) &&
+  (
+    isValidTonAddress(wallet) ||
+    /^-?\d+:[0-9a-fA-F]{64}$/.test(wallet)
+  );
   const showWalletError = submitted && !walletOk;
   const showAgreeError = submitted && !agree;
 
@@ -698,6 +703,7 @@ const testNftPurchase = async () => {
               dir="ltr"
               readOnly
               placeholder="Connect your TON wallet"
+              value={wallet}
               autoComplete="off"
               spellCheck="false"
               aria-invalid={showWalletError}
