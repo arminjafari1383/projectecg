@@ -2053,6 +2053,51 @@ const renderTransactionsPage = () => {
   <>
     <div className="wallet-demo-card">
       {/* Connected wallet and ECG contract addresses */}
+      
+
+      <div className="wallet-demo-balance">
+        <span>TON Balance</span>
+        <h2>
+          {wallet
+            ? `${Number(wallet.ton_balance ?? 0).toLocaleString(
+                "en-US",
+                { maximumFractionDigits: 9 }
+              )} TON`
+            : "— TON"}
+        </h2>
+      </div>
+
+      <div className="wallet-demo-divider" />
+
+      <div className="wallet-demo-balance">
+        <span>ECG Balance</span>
+        <h2>
+          {address
+            ? withdrawableBalance.toLocaleString("en-US", {
+                maximumFractionDigits: 2,
+              })
+            : "—"} ECG
+        </h2>
+      </div>
+
+      <div className="wallet-demo-actions">
+        <button onClick={() => setWalletPage("topup")}>
+          ＋ Top Up
+        </button>
+
+        <button onClick={() => setWalletPage("withdraw")}>
+          ↗ Withdraw
+        </button>
+
+        <button onClick={() => setWalletPage("swap")}>
+          ⇄ Swap
+        </button>
+
+        <button onClick={() => setWalletPage("transactions")}>
+          ☷ Transactions
+        </button>
+      </div>
+
       <div
         style={{
           display: "grid",
@@ -2151,49 +2196,6 @@ const renderTransactionsPage = () => {
           </button>
           </div>
         </div>
-      </div>
-
-      <div className="wallet-demo-balance">
-        <span>TON Balance</span>
-        <h2>
-          {wallet
-            ? `${Number(wallet.ton_balance ?? 0).toLocaleString(
-                "en-US",
-                { maximumFractionDigits: 9 }
-              )} TON`
-            : "— TON"}
-        </h2>
-      </div>
-
-      <div className="wallet-demo-divider" />
-
-      <div className="wallet-demo-balance">
-        <span>ECG Balance</span>
-        <h2>
-          {address
-            ? withdrawableBalance.toLocaleString("en-US", {
-                maximumFractionDigits: 2,
-              })
-            : "—"} ECG
-        </h2>
-      </div>
-
-      <div className="wallet-demo-actions">
-        <button onClick={() => setWalletPage("topup")}>
-          ＋ Top Up
-        </button>
-
-        <button onClick={() => setWalletPage("withdraw")}>
-          ↗ Withdraw
-        </button>
-
-        <button onClick={() => setWalletPage("swap")}>
-          ⇄ Swap
-        </button>
-
-        <button onClick={() => setWalletPage("transactions")}>
-          ☷ Transactions
-        </button>
       </div>
     </div>
 
