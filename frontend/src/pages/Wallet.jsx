@@ -1818,14 +1818,14 @@ const renderTransactionsPage = () => {
               border: "1px solid rgba(245, 158, 11, 0.65)",
               lineHeight: 1.8,
             }}>
-              <strong>موجودی کیف پول داخلی کافی نیست؛ لطفاً موجودی خود را افزایش دهید.</strong>
+              <strong>Insufficient TON Balance — Please top up your wallet to continue.</strong>
               {Number.isFinite(stakeRequiredAmount) && Number.isFinite(stakeAvailableBalance) && (
-                <div>مبلغ انتخابی: {stakeRequiredAmount.toLocaleString("en-US")} TON — موجودی: {stakeAvailableBalance.toLocaleString("en-US")} TON</div>
+                <div>Selected stake amount: {stakeRequiredAmount.toLocaleString("en-US")} TON — Available balance: {stakeAvailableBalance.toLocaleString("en-US")} TON</div>
               )}
               {Number.isFinite(stakeMissingAmount) && stakeMissingAmount > 0 && (
-                <div>مبلغ مورد نیاز برای شارژ: حداقل {stakeMissingAmount.toLocaleString("en-US", { maximumFractionDigits: 9 })} TON</div>
+                <div>Additional TON needed: at least {stakeMissingAmount.toLocaleString("en-US", { maximumFractionDigits: 9 })} TON</div>
               )}
-              <div>شما در صفحه Wallet می‌مانید تا موجودی خود را شارژ کنید.</div>
+              <div>You will remain on the Wallet page until you top up your balance.</div>
             </div>
           )}
 
@@ -2076,6 +2076,54 @@ const renderTransactionsPage = () => {
   <>
     <div className="wallet-demo-card">
       {/* Connected wallet and ECG contract addresses */}
+      
+
+      <div className="wallet-demo-balance">
+        <span>TON Balance</span>
+        <h2>
+          {wallet
+            ? `${Number(wallet.ton_balance ?? 0).toLocaleString(
+                "en-US",
+                { maximumFractionDigits: 9 }
+              )} TON`
+            : "— TON"}
+        </h2>
+      </div>
+
+      
+
+      <div className="wallet-demo-divider" />
+
+      <div className="wallet-demo-balance">
+        <span>ECG Balance</span>
+        <h2>
+          {address
+            ? withdrawableBalance.toLocaleString("en-US", {
+                maximumFractionDigits: 2,
+              })
+            : "—"} ECG
+        </h2>
+      </div>
+
+
+      <div className="wallet-demo-actions">
+        <button onClick={() => setWalletPage("topup")}>
+          ＋ Top Up
+        </button>
+
+        <button onClick={() => setWalletPage("withdraw")}>
+          ↗ Withdraw
+        </button>
+
+        <button onClick={() => setWalletPage("swap")}>
+          ⇄ Swap
+        </button>
+
+        <button onClick={() => setWalletPage("transactions")}>
+          ☷ Transactions
+        </button>
+      </div>
+
       <div
         style={{
           display: "grid",
@@ -2174,49 +2222,6 @@ const renderTransactionsPage = () => {
           </button>
           </div>
         </div>
-      </div>
-
-      <div className="wallet-demo-balance">
-        <span>TON Balance</span>
-        <h2>
-          {wallet
-            ? `${Number(wallet.ton_balance ?? 0).toLocaleString(
-                "en-US",
-                { maximumFractionDigits: 9 }
-              )} TON`
-            : "— TON"}
-        </h2>
-      </div>
-
-      <div className="wallet-demo-divider" />
-
-      <div className="wallet-demo-balance">
-        <span>ECG Balance</span>
-        <h2>
-          {address
-            ? withdrawableBalance.toLocaleString("en-US", {
-                maximumFractionDigits: 2,
-              })
-            : "—"} ECG
-        </h2>
-      </div>
-
-      <div className="wallet-demo-actions">
-        <button onClick={() => setWalletPage("topup")}>
-          ＋ Top Up
-        </button>
-
-        <button onClick={() => setWalletPage("withdraw")}>
-          ↗ Withdraw
-        </button>
-
-        <button onClick={() => setWalletPage("swap")}>
-          ⇄ Swap
-        </button>
-
-        <button onClick={() => setWalletPage("transactions")}>
-          ☷ Transactions
-        </button>
       </div>
     </div>
 
