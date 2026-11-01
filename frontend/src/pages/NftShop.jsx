@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTonWallet } from "@tonconnect/ui-react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
@@ -190,6 +191,8 @@ function saveBackendOrderStatuses(old, updates) {
 export default function NftShop() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const tonwallet = useTonWallet();
+  const connectwalletAddress = tonwallet?.account?.address || "";
   const product = PRODUCTS[0];
 
   const [state, setState] = useState(loadState);
@@ -198,7 +201,7 @@ export default function NftShop() {
   const [invoiceId, setInvoiceId] = useState(null);
 
   const [qty, setQty] = useState(1);
-  const [wallet, setWallet] = useState("");
+  const wallet = connectwalletAddress;
   const [contact, setContact] = useState("");
   const [agree, setAgree] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -258,10 +261,10 @@ export default function NftShop() {
 
   const openBuy = () => {
     setQty(1);
-    setWallet("");
     setContact("");
     setAgree(false);
     setSubmitted(false);
+    setOrderError("");
     setBuyOpen(true);
   };
 
@@ -272,13 +275,18 @@ export default function NftShop() {
   const submitOrder = async (e) => {
     e.preventDefault();
     setSubmitted(true);
-    if (!walletOk || !agree || orderSaving) return;
+    if (!walletOk) {
+      setOrderError("Please connect your TON wallet before purchasing NFT.");
+      return;
+    }
+
+    if (!agree || orderSaving) return;
     setOrderError("");
     setInsufficientBalance(null);
     setOrderSaving(true);
     try {
       const response = await api.post("/nft/buy-internal/", {
-        wallet_address: wallet,
+        wallet_address: connectwalletAddress,
         product_id: product.id,
         quantity: Number(qty),
         contact,
@@ -344,7 +352,7 @@ const testNftPurchase = async () => {
     const response = await api.post(
       "/nft/buy-internal/",
       {
-        wallet_address: wallet.trim(),
+        wallet_address: connectwalletAddress,
         product_id: product.id,
         quantity: Number(qty),
         contact,
@@ -688,11 +696,9 @@ const testNftPurchase = async () => {
             <input
               type="text"
               dir="ltr"
-              value={wallet}
-              onChange={(e) => setWallet(e.target.value)}
-              placeholder="UQ… / EQ…"
+              readOnly
+              placeholder="Connect your TON wallet"
               autoComplete="off"
-              autoCapitalize="off"
               spellCheck="false"
               aria-invalid={showWalletError}
               className={showWalletError ? "has-error" : walletOk ? "is-valid" : ""}
