@@ -1014,10 +1014,15 @@ export default function Purchase() {
 
       if (available < amount) {
         const missing = Math.ceil((amount - available) * 1e9) / 1e9;
+        // Insufficient internal TON: navigate to Wallet and stay there.
+        // Remove any old Stake auto-return flag from a previous connection flow.
+        try { sessionStorage.removeItem(WALLET_RETURN_TO_KEY); } catch { /* ignore */ }
         navigate("/wallet", {
           state: {
+            reason: "insufficient_stake_balance",
             topupAmount: String(missing),
-            returnTo: "/stake",
+            requiredAmount: amount,
+            availableBalance: available,
           },
         });
         return;
