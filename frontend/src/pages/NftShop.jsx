@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { useTonWallet } from "@tonconnect/ui-react";
+import { useTonWallet, useTonAddress } from "@tonconnect/ui-react";
 
 import { useNavigate } from "react-router-dom";
 
@@ -386,7 +386,9 @@ export default function NftShop() {
 
   const tonWallet = useTonWallet();
 
-  const connectedWalletAddress = tonWallet?.account?.address ?? "";
+  const tonAddress = useTonAddress(false); // non-bounceable, e.g. UQ...
+
+  const connectedWalletAddress = tonWallet?.account?.address ? tonAddress : "";
 
   const product = PRODUCTS[0];
 
@@ -492,7 +494,7 @@ export default function NftShop() {
 
     isValidTonAddress(wallet) ||
 
-    /^-?\d+:[0-9a-fA-F]{64}$/.test(wallet)
+    /^UQ[A-Za-z0-9_-]{46}$/.test(wallet)
 
   );
 
