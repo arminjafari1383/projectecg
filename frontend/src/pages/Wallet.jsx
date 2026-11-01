@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
-import { useTonWallet, TonConnectButton, useTonConnectUI, useTonAddress } from "@tonconnect/ui-react";
+import { useTonWallet, TonConnectButton, useTonConnectUI } from "@tonconnect/ui-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import ecgLogo from "../assets/ecg-logo.png";
 import usdtLogo from "../assets/usdt-logo.png"
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
-import { beginCell } from "@ton/core";
+import { Address, beginCell } from "@ton/core";
 import { Buffer } from "buffer";
 import "./Wallet.css";
 import RewardCap from "./RewardCap";
@@ -151,7 +151,21 @@ export default function Wallet() {
   );
 
   // show address wallet in ui
-  const displayAddress = useTonAddress();
+  // Display only: convert the connected TON wallet to mainnet non-bounceable UQ format.
+  // Keep `address` unchanged for backend lookups, wallet identity, top-ups and payments.
+  const displayAddress = useMemo(() => {
+    if (!address) return "";
+    try {
+      return Address.parse(address).toString({
+        bounceable: false,
+        urlSafe: true,
+        testOnly: false,
+      });
+    } catch (error) {
+      console.error("Invalid connected TON wallet address:", error);
+      return "";
+    }
+  }, [address]);
   // ignore all request in moment, send for connect wallet
   const hasConnected = useRef(false);
 
@@ -1881,7 +1895,7 @@ const renderTransactionsPage = () => {
 
             {isTonWalletConnected ? (
               <>
-                <p>Wallet connected: {shortenMiddle(address)}</p>
+                <p>Wallet connected: {shortenMiddle(displayAddress)}</p>
                 <button
                   type="button"
                   className="wallet-topup-continue"
@@ -1924,7 +1938,7 @@ const renderTransactionsPage = () => {
                 </p>
 
                 <p>
-                  From: <strong>{shortenMiddle(address)}</strong>
+                  From: <strong>{shortenMiddle(displayAddress)}</strong>
                 </p>
 
                 <p>
@@ -2068,7 +2082,7 @@ const renderTransactionsPage = () => {
             }}
           >
             <span
-              title={address || "Wallet not connected"}
+              title={displayAddress || "Wallet not connected"}
               style={{
                 fontSize: 13,
                 fontWeight: 600,
@@ -2076,13 +2090,13 @@ const renderTransactionsPage = () => {
                 minWidth: 0,
               }}
             >
-              {address ? shortenMiddle(address, 9, 8) : "Not connected"}
+              {displayAddress ? shortenMiddle(displayAddress, 9, 8) : "Not connected"}
             </span>
             <button
               type="button"
               className="wallet-copy-icon-btn"
-              disabled={!address}
-              onClick={() => copyText("Wallet address", address)}
+              disabled={!displayAddress}
+              onClick={() => copyText("Wallet address", displayAddress)}
               aria-label="Copy connected wallet address"
               title="Copy wallet address"
             >
