@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { useTonWallet, useTonAddress } from "@tonconnect/ui-react";
+import { useTonWallet } from "@tonconnect/ui-react";
+import { Address } from "@ton/core";
 
 import { useNavigate } from "react-router-dom";
 
@@ -24,7 +25,6 @@ import {
 
   getSold,
 
-  isValidTonAddress,
 
   loadState,
 
@@ -374,6 +374,21 @@ function saveBackendOrderStatuses(old, updates) {
 
 
 
+// Always show the non-bounceable, user-friendly mainnet address (UQ...),
+// never the raw 0:<hex> representation.
+function asUqAddress(value) {
+  if (!value) return "";
+  try {
+    return Address.parse(value).toString({
+      bounceable: false,
+      urlSafe: true,
+      testOnly: false,
+    });
+  } catch {
+    return "";
+  }
+}
+
 /* ---------- page ---------- */
 
 
@@ -386,9 +401,10 @@ export default function NftShop() {
 
   const tonWallet = useTonWallet();
 
-  const tonAddress = useTonAddress(false); // non-bounceable, e.g. UQ...
-
-  const connectedWalletAddress = tonWallet?.account?.address ? tonAddress : "";
+  const connectedWalletAddress = useMemo(
+    () => asUqAddress(tonWallet?.account?.address),
+    [tonWallet?.account?.address]
+  );
 
   const product = PRODUCTS[0];
 
@@ -486,17 +502,7 @@ export default function NftShop() {
 
 
 
-  const walletOk =
-
-  Boolean(connectedWalletAddress) &&
-
-  (
-
-    isValidTonAddress(wallet) ||
-
-    /^UQ[A-Za-z0-9_-]{46}$/.test(wallet)
-
-  );
+  const walletOk = Boolean(tonWallet?.account?.address) && /^UQ[A-Za-z0-9_-]{46}$/.test(wallet);
 
   const showWalletError = submitted && !walletOk;
 
@@ -1806,13 +1812,13 @@ const testNftPurchase = async () => {
 
                     dir="ltr"
 
-                    onClick={() => copy("wallet", activeInvoice.wallet)}
+                    onClick={() => copy("wallet", asUqAddress(activeInvoice.wallet))}
 
                     title={t("shop.copy")}
 
                   >
 
-                    {shortAddress(activeInvoice.wallet)}
+                    {shortAddress(asUqAddress(activeInvoice.wallet))}
 
                     {copiedKey === "wallet" ? <CheckIcon /> : <CopyIcon />}
 
