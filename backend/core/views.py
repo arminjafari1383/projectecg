@@ -3076,9 +3076,26 @@ def get_referral_levels(request):
             )
             bucket[ledger_asset] += amount
 
-    def serialize_level_users(stored_users, level_number):
+    # Server-side pagination: ?page_size=10&level_1_page=2&level_2_page=1 ...
+    try:
+        page_size = int(request.query_params.get("page_size", 10))
+    except (TypeError, ValueError):
+        page_size = 10
+    page_size = max(1, min(page_size, 50))
+
+    def get_level_page(level_number):
+        try:
+            return max(
+                1,
+                int(request.query_params.get(f"level_{level_number}_page", 1)),
+            )
+        except (TypeError, ValueError):
+            return 1
+
+    def serialize_level_users(stored_users, level_number, page=1):
         stored_users = stored_users or []
-        stored_users = stored_users[:20]
+        start = (page - 1) * page_size
+        stored_users = stored_users[start:start + page_size]
 
         wallets = [
             item.get("wallet")
@@ -3235,9 +3252,17 @@ def get_referral_levels(request):
             f"level_{level_number}_users"
         )
 
+        stored_total = len(stored_users or [])
+        total_pages = max(1, -(-stored_total // page_size))
+        page = min(get_level_page(level_number), total_pages)
+
         levels[f"level_{level_number}"] = {
             "count": count,
-            "users": serialize_level_users(stored_users, level_number)
+            "users": serialize_level_users(stored_users, level_number, page),
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "total_users": stored_total,
         }
 
         total_referrals += count

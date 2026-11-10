@@ -94,18 +94,18 @@ function getTelegramAvatar(telegramId, username) {
 // LEVEL TABLE (با صفحه‌بندی مستقل برای هر لول)
 // ======================================================
 
-function LevelTable({ level, data }) {
-  const [page, setPage] = useState(1);
+function LevelTable({ level, data, page, onPageChange }) {
 
   const percentage = REFERRAL_PERCENTAGES[level] || 0;
 
   const users = Array.isArray(data?.users) ? data.users : [];
   const count = Number(data?.count ?? 0);
 
-  const totalPages = Math.max(1, Math.ceil(users.length / PAGE_SIZE));
-  const currentPage = Math.min(page, totalPages);
+  // صفحه‌بندی سمت سرور: users فقط همان صفحه‌ی فعلی است
+  const totalPages = Math.max(1, Number(data?.total_pages ?? 1));
+  const currentPage = Math.min(Number(data?.page ?? page ?? 1), totalPages);
   const startIndex = (currentPage - 1) * PAGE_SIZE;
-  const displayUsers = users.slice(startIndex, startIndex + PAGE_SIZE);
+  const displayUsers = users;
 
   return (
     <div className="level-table">
@@ -244,7 +244,7 @@ function LevelTable({ level, data }) {
           <button
             type="button"
             className="page-btn"
-            onClick={() => setPage(currentPage - 1)}
+            onClick={() => onPageChange(level, currentPage - 1)}
             disabled={currentPage === 1}
           >
             ‹ Prev
@@ -257,7 +257,7 @@ function LevelTable({ level, data }) {
           <button
             type="button"
             className="page-btn"
-            onClick={() => setPage(currentPage + 1)}
+            onClick={() => onPageChange(level, currentPage + 1)}
             disabled={currentPage === totalPages}
           >
             Next ›
@@ -297,7 +297,13 @@ export default function Referrals() {
 
   const [isTelegramWebApp, setIsTelegramWebApp] = useState(false);
 
+  const [levelPages, setLevelPages] = useState({});
+
   const registerKeyRef = useRef(null);
+
+  function handleLevelPageChange(level, nextPage) {
+    setLevelPages((prev) => ({ ...prev, [level]: Math.max(1, nextPage) }));
+  }
 
   // ====================================================
   // INIT
@@ -484,15 +490,24 @@ export default function Referrals() {
 
       try {
         const response = await api.get("/referral/levels/", {
-          params: buildReferralApiParams(
-            {
-              telegram_id: finalTelegramId,
-              telegram_username: telegramUsername,
-              telegram_photo_url: telegramPhotoUrl,
-              is_telegram: true,
-            },
-            inviterCode
-          ),
+          params: {
+            ...buildReferralApiParams(
+              {
+                telegram_id: finalTelegramId,
+                telegram_username: telegramUsername,
+                telegram_photo_url: telegramPhotoUrl,
+                is_telegram: true,
+              },
+              inviterCode
+            ),
+            page_size: PAGE_SIZE,
+            ...Object.fromEntries(
+              Object.entries(levelPages).map(([lvl, pg]) => [
+                `level_${lvl}_page`,
+                pg,
+              ])
+            ),
+          },
         });
 
         if (cancelled) return;
@@ -545,6 +560,7 @@ export default function Referrals() {
     telegramPhotoUrl,
     inviterCode,
     myCode,
+    levelPages,
   ]);
 
   // ====================================================
@@ -796,6 +812,8 @@ export default function Referrals() {
                   <LevelTable
                     level={level}
                     data={levels?.[`level_${level}`]}
+                    page={levelPages[level] || 1}
+                    onPageChange={handleLevelPageChange}
                   />
                 </div>
               ))}
